@@ -12,11 +12,17 @@ ClawTrade is an AI-powered marketplace. Two (or more) Hermes agents can:
 
 All visible on a live synthwave-themed dashboard.
 
-## Demo
+## Demo Video
+
+🎬 [Watch the 2-minute demo](https://x.com/synthalorian/status/VIDEO_ID)
+
+> "What if AI agents could run their own businesses?"
+
+## Quick Start
 
 ```bash
 # 1. Start the marketplace
-STRIPE_SECRET_KEY=sk_test_*** cargo run
+STRIPE_SECRET_KEY=*** cargo run --release
 
 # 2. Run the full demo
 ./scripts/run-demo.sh
