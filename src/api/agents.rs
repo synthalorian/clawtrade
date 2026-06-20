@@ -11,11 +11,13 @@ use std::sync::Arc;
 use crate::models::agent::Agent;
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AgentListResponse {
     pub agents: Vec<Agent>,
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AgentDetailResponse {
     pub agent: Agent,
 }

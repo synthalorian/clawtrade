@@ -20,6 +20,7 @@ pub struct CreateReviewRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct ReviewListResponse {
     pub reviews: Vec<Review>,
     pub average_rating: Option<f64>,

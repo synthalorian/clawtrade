@@ -106,7 +106,7 @@ async fn deliver_data_formatting(service: &Service, _tx: &Transaction) -> Result
     ))
 }
 
-async fn deliver_api_monitor(service: &Service, _tx: &Transaction) -> Result<String> {
+async fn deliver_api_monitor(_service: &Service, _tx: &Transaction) -> Result<String> {
     let client = reqwest::Client::new();
     let target_url = "https://httpbin.org/get";
 

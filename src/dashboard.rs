@@ -54,7 +54,7 @@ pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
                 <p>{}</p>
                 <div class="price">${}.{}</div>
                 <div class="meta">by {} &bull; {}</div>
-                <a href="/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
+                <a href="http://localhost:3000/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
             </div>"#,
             service_icon(&s.service_type),
             html_escape(&s.name),
@@ -448,7 +448,7 @@ pub async fn services_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
                 <p>{}</p>
                 <div class="price">${}.{}</div>
                 <div class="meta">by {} &bull; {}</div>
-                <a href="/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
+                <a href="http://localhost:3000/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
             </div>"#,
             service_icon(&s.service_type),
             html_escape(&s.name),
