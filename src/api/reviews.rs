@@ -41,7 +41,7 @@ pub async fn create_review(
     // Verify transaction exists and is paid
     match Transaction::get_by_id(&pool, &req.transaction_id).await {
         Ok(Some(tx)) => {
-            if tx.status != "paid" {
+            if tx.status != "paid" && tx.status != "released" && tx.status != "escrow" {
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(serde_json::json!({"error": "can only review paid transactions"})),

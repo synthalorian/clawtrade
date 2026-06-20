@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount_cents    INTEGER NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending',
     stripe_session_id TEXT,
+    stripe_transfer_id TEXT,
+    escrow_released_at TEXT,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
