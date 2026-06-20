@@ -546,7 +546,9 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
 
     let ws_script = r#"
     <script>
-    const ws = new WebSocket('ws://localhost:3000/ws');
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host.replace(/:8746$/, ':3000');
+    const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
     ws.onopen = () => console.log('[ws] connected');
     ws.onmessage = (e) => {
         const event = JSON.parse(e.data);
