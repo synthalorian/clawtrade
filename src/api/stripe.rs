@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
+use crate::models::agent::Agent;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
 
@@ -31,11 +32,37 @@ pub struct WebhookPayload {
     pub data: serde_json::Value,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ConnectAccountRequest {
+    pub agent_id: String,
+    pub email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConnectAccountResponse {
+    pub account_id: String,
+    pub onboarding_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccountLinkRequest {
+    pub account_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccountLinkResponse {
+    pub url: String,
+}
+
+fn stripe_secret() -> Option<String> {
+    std::env::var("STRIPE_SECRET_KEY").ok()
+}
+
+
 pub async fn create_checkout(
     State(pool): State<Arc<SqlitePool>>,
     Query(req): Query<CreateCheckoutRequest>,
 ) -> impl IntoResponse {
-    // 1. Get service
     let service = match Service::get_by_id(&pool, &req.service_id).await {
         Ok(Some(s)) => s,
         Ok(None) => {
@@ -52,7 +79,6 @@ pub async fn create_checkout(
         }
     };
 
-    // 2. Create transaction (pending)
     let tx = match Transaction::create(
         &pool,
         &req.service_id,
@@ -71,10 +97,9 @@ pub async fn create_checkout(
         }
     };
 
-    // 3. Call Stripe to create checkout session
-    let stripe_secret = match std::env::var("STRIPE_SECRET_KEY") {
-        Ok(k) => k,
-        Err(_) => {
+    let stripe_secret = match stripe_secret() {
+        Some(k) => k,
+        None => {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({"error": "STRIPE_SECRET_KEY not configured", "demo_mode": true})),
@@ -83,30 +108,47 @@ pub async fn create_checkout(
     };
 
     let client = reqwest::Client::new();
-    let params = [
-        ("payment_method_types[]", "card"),
-        ("line_items[0][price_data][currency]", "usd"),
+
+    let seller = match Agent::get_by_id(&pool, &service.agent_id).await {
+        Ok(Some(a)) => a,
+        _ => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "seller not found"})),
+            )
+        }
+    };
+
+    let mut params: Vec<(&str, String)> = vec![
+        ("payment_method_types[]", "card".to_string()),
+        ("line_items[0][price_data][currency]", "usd".to_string()),
         (
             "line_items[0][price_data][product_data][name]",
-            &service.name,
+            service.name.clone(),
         ),
         (
             "line_items[0][price_data][unit_amount]",
-            &service.price_cents.to_string(),
+            service.price_cents.to_string(),
         ),
-        ("line_items[0][quantity]", "1"),
-        ("mode", "payment"),
+        ("line_items[0][quantity]", "1".to_string()),
+        ("mode", "payment".to_string()),
         (
             "success_url",
-            &format!("http://localhost:8746/success?tx_id={}", tx.id),
+            format!("http://localhost:8746/success?tx_id={}", tx.id),
         ),
         (
             "cancel_url",
-            &format!("http://localhost:8746/cancel?tx_id={}", tx.id),
+            format!("http://localhost:8746/cancel?tx_id={}", tx.id),
         ),
-        ("metadata[transaction_id]", &tx.id),
-        ("metadata[service_id]", &req.service_id),
+        ("metadata[transaction_id]", tx.id.clone()),
+        ("metadata[service_id]", req.service_id.clone()),
     ];
+
+    if let Some(stripe_account_id) = seller.stripe_account_id {
+        let platform_fee = (service.price_cents as f64 * 0.10).round() as i64;
+        params.push(("transfer_data[destination]", stripe_account_id));
+        params.push(("application_fee_amount", platform_fee.to_string()));
+    }
 
     let res = match client
         .post("https://api.stripe.com/v1/checkout/sessions")
@@ -136,7 +178,6 @@ pub async fn create_checkout(
 
     if let Some(url) = stripe_data["url"].as_str() {
         let session_id = stripe_data["id"].as_str().unwrap_or("").to_string();
-        // Update transaction with stripe session id
         if let Err(e) = Transaction::update_stripe_session(&pool, &tx.id, &session_id).await {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -181,4 +222,238 @@ pub async fn stripe_webhook(
     }
 
     (StatusCode::OK, Json(serde_json::json!({"received": true})))
+}
+
+pub async fn create_connect_account(
+    State(pool): State<Arc<SqlitePool>>,
+    Json(req): Json<ConnectAccountRequest>,
+) -> impl IntoResponse {
+    let stripe_secret = match stripe_secret() {
+        Some(k) => k,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "STRIPE_SECRET_KEY not configured"})),
+            )
+        }
+    };
+
+    let agent = match Agent::get_by_id(&pool, &req.agent_id).await {
+        Ok(Some(a)) => a,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "agent not found"})),
+            )
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
+    };
+
+    if let Some(existing) = agent.stripe_account_id {
+        let client = reqwest::Client::new();
+        let link_res = match client
+            .post("https://api.stripe.com/v1/account_links")
+            .header("Authorization", format!("Bearer {}", stripe_secret))
+            .form(&vec![
+                ("account", existing.clone()),
+                ("refresh_url", "http://localhost:8746/agents".to_string()),
+                ("return_url", "http://localhost:8746/agents".to_string()),
+                ("type", "account_onboarding".to_string()),
+            ])
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("stripe link failed: {}", e)})),
+                )
+            }
+        };
+
+        let link_data: serde_json::Value = match link_res.json().await {
+            Ok(d) => d,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("stripe link parse failed: {}", e)})),
+                )
+            }
+        };
+
+        if let Some(url) = link_data["url"].as_str() {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "account_id": existing,
+                    "onboarding_url": url,
+                })),
+            );
+        } else {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": link_data})),
+            );
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let res = match client
+        .post("https://api.stripe.com/v1/accounts")
+        .header("Authorization", format!("Bearer {}", stripe_secret))
+        .form(&vec![
+            ("type", "express".to_string()),
+            ("email", req.email.clone()),
+            ("capabilities[transfers][requested]", "true".to_string()),
+            ("capabilities[card_payments][requested]", "true".to_string()),
+        ])
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("stripe account creation failed: {}", e)})),
+            )
+        }
+    };
+
+    let account_data: serde_json::Value = match res.json().await {
+        Ok(d) => d,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("stripe parse failed: {}", e)})),
+            )
+        }
+    };
+
+    let account_id = match account_data["id"].as_str() {
+        Some(id) => id.to_string(),
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": account_data})),
+            )
+        }
+    };
+
+    if let Err(e) = Agent::update_stripe_account(&pool, &req.agent_id, &account_id).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        );
+    }
+
+    let link_res = match client
+        .post("https://api.stripe.com/v1/account_links")
+        .header("Authorization", format!("Bearer {}", stripe_secret))
+        .form(&vec![
+            ("account", account_id.clone()),
+            ("refresh_url", "http://localhost:8746/agents".to_string()),
+            ("return_url", "http://localhost:8746/agents".to_string()),
+            ("type", "account_onboarding".to_string()),
+        ])
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("stripe link failed: {}", e)})),
+            )
+        }
+    };
+
+    let link_data: serde_json::Value = match link_res.json().await {
+        Ok(d) => d,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("stripe link parse failed: {}", e)})),
+            )
+        }
+    };
+
+    if let Some(url) = link_data["url"].as_str() {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "account_id": account_id,
+                "onboarding_url": url,
+            })),
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": link_data})),
+        )
+    }
+}
+
+pub async fn create_account_link(
+    State(_pool): State<Arc<SqlitePool>>,
+    Json(req): Json<AccountLinkRequest>,
+) -> impl IntoResponse {
+    let stripe_secret = match stripe_secret() {
+        Some(k) => k,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "STRIPE_SECRET_KEY not configured"})),
+            )
+        }
+    };
+
+    let client = reqwest::Client::new();
+    let res = match client
+        .post("https://api.stripe.com/v1/account_links")
+        .header("Authorization", format!("Bearer {}", stripe_secret))
+        .form(&vec![
+            ("account", req.account_id.clone()),
+            ("refresh_url", "http://localhost:8746/agents".to_string()),
+            ("return_url", "http://localhost:8746/agents".to_string()),
+            ("type", "account_onboarding".to_string()),
+        ])
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("stripe link failed: {}", e)})),
+            )
+        }
+    };
+
+    let data: serde_json::Value = match res.json().await {
+        Ok(d) => d,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("stripe parse failed: {}", e)})),
+            )
+        }
+    };
+
+    if let Some(url) = data["url"].as_str() {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({"url": url})),
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": data})),
+        )
+    }
 }

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS agents (
     reputation_score INTEGER NOT NULL DEFAULT 0,
     total_sales     INTEGER NOT NULL DEFAULT 0,
     total_revenue_cents INTEGER NOT NULL DEFAULT 0,
+    stripe_account_id TEXT,
     created_at      TEXT NOT NULL
 );
 
