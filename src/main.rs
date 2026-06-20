@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
     let pool = db::init_db(&db_path).await?;
     let state = Arc::new(pool);
 
-    // Build API routes
+    // API routes
     let api_routes = Router::new()
         .route("/api/services", get(api::services::list_services).post(api::services::create_service))
         .route("/api/services/{id}", get(api::services::get_service))
@@ -46,6 +46,8 @@ async fn main() -> Result<()> {
         .route("/api/transactions/{id}", get(api::transactions::get_transaction))
         .route("/api/checkout", get(api::stripe::create_checkout))
         .route("/api/webhooks/stripe", post(api::stripe::stripe_webhook))
+        .route("/api/llm/summarize", post(api::llm::summarize))
+        .route("/api/llm/analyze", post(api::llm::analyze))
         .with_state(state.clone());
 
     // Dashboard routes
