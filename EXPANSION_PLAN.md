@@ -261,12 +261,232 @@ The MVP is a working demo. v2 turns ClawTrade into a deployable product that can
 
 ---
 
-## Next Session Focus
+## Rails Migration Path (End-Game)
 
-When we resume, we start with **Feature 2: Stripe Connect**. This is the single most important feature — it turns test mode into real money. Without it, everything else is just decoration.
+The current Rust/Axum stack is optimized for hackathon speed: single binary, zero dependencies, instant startup. For production scale, Rails is the correct choice — proven ecosystem, rapid iteration, massive hiring pool.
 
-After Stripe Connect works, we move to **Feature 1: Service Delivery**. Then the platform has real value: create service → get paid → deliver value → earn reputation.
+### Why Rails for Production
 
-That's the loop that generates revenue.
+| Factor | Rust/Axum (Now) | Rails (Future) |
+|--------|-----------------|------------------|
+| **Time to feature** | 2-3 hours | 30 minutes |
+| **Gems/ecosystem** | Build from scratch | Stripe, Devise, Sidekiq, etc. |
+| **Hiring** | Niche | Massive talent pool |
+| **Hosting** | Fly.io, self-compile | Heroku, Render, AWS Elastic Beanstalk |
+| **Monitoring** | Custom | New Relic, Datadog, Scout |
+| **Community** | Small | Largest web framework community |
+
+### Migration Strategy
+
+**Phase 1: API-First (Month 1-2)**
+- Build Rails API that mirrors current Rust endpoints exactly
+- PostgreSQL replaces SQLite
+- ActiveRecord replaces sqlx
+- Stripe Ruby SDK replaces raw HTTP calls
+- Front-end stays server-rendered (ERB templates, same synthwave CSS)
+
+**Phase 2: Feature Parity (Month 2-3)**
+- Port all 8 v2 features to Rails
+- Add Rails gems: `stripe` (payments), `devise` (auth), `pundit` (authorization), `sidekiq` (background jobs)
+- Background jobs for: delivery engine, pricing optimization, agent loops
+- ActionCable for WebSocket real-time updates
+
+**Phase 3: Rails Advantages (Month 3+)**
+- **ActiveAdmin** — instant admin dashboard for marketplace moderation
+- **Devise + Omniauth** — social login, enterprise SSO
+- **Rails Console** — live debugging, data fixes, manual operations
+- **Migrations** — schema changes without downtime
+- **Hotwire/Turbo** — replace HTMX with Rails-native reactive UI
+- **StimulusReflex** — real-time updates without custom WebSocket code
+
+### Database Schema (Rails-Ready)
+
+```ruby
+# db/migrate/xxx_create_agents.rb
+class CreateAgents < ActiveRecord::Migration[8.0]
+  def change
+    create_table :agents, id: :uuid do |t|
+      t.string :name, null: false
+      t.text :description
+      t.integer :reputation_score, default: 0
+      t.integer :total_sales, default: 0
+      t.integer :total_revenue_cents, default: 0
+      t.string :stripe_account_id # Stripe Connect
+      t.string :api_key # Agent Hosting API
+      t.boolean :active, default: true
+      t.timestamps
+    end
+    add_index :agents, :api_key, unique: true
+  end
+end
+
+# db/migrate/xxx_create_services.rb
+class CreateServices < ActiveRecord::Migration[8.0]
+  def change
+    create_table :services, id: :uuid do |t|
+      t.references :agent, null: false, foreign_key: true, type: :uuid
+      t.string :name, null: false
+      t.text :description
+      t.integer :price_cents, null: false
+      t.string :service_type, null: false
+      t.string :status, default: 'active'
+      t.jsonb :price_history, default: {}
+      t.text :badge_svg
+      t.timestamps
+    end
+    add_index :services, :service_type
+    add_index :services, :status
+  end
+end
+
+# db/migrate/xxx_create_transactions.rb
+class CreateTransactions < ActiveRecord::Migration[8.0]
+  def change
+    create_table :transactions, id: :uuid do |t|
+      t.references :service, null: false, foreign_key: true, type: :uuid
+      t.references :buyer, null: false, foreign_key: { to_table: :agents }, type: :uuid
+      t.references :seller, null: false, foreign_key: { to_table: :agents }, type: :uuid
+      t.integer :amount_cents, null: false
+      t.string :status, default: 'pending' # pending, escrow, paid, released, disputed
+      t.string :stripe_session_id
+      t.string :stripe_transfer_id
+      t.timestamps
+    end
+    add_index :transactions, :status
+    add_index :transactions, :stripe_session_id
+  end
+end
+
+# db/migrate/xxx_create_deliverables.rb
+class CreateDeliverables < ActiveRecord::Migration[8.0]
+  def change
+    create_table :deliverables, id: :uuid do |t|
+      t.references :transaction, null: false, foreign_key: true, type: :uuid
+      t.string :service_type, null: false
+      t.jsonb :input_data
+      t.jsonb :output_data
+      t.string :status, default: 'pending' # pending, processing, completed, failed
+      t.text :error_message
+      t.timestamps
+    end
+  end
+end
+
+# db/migrate/xxx_create_reviews.rb
+class CreateReviews < ActiveRecord::Migration[8.0]
+  def change
+    create_table :reviews, id: :uuid do |t|
+      t.references :transaction, null: false, foreign_key: true, type: :uuid
+      t.references :agent, null: false, foreign_key: true, type: :uuid
+      t.integer :rating, null: false # 1-5
+      t.text :comment
+      t.timestamps
+    end
+    add_index :reviews, [:agent_id, :rating]
+  end
+end
+
+# db/migrate/xxx_create_templates.rb
+class CreateTemplates < ActiveRecord::Migration[8.0]
+  def change
+    create_table :templates, id: :uuid do |t|
+      t.string :name, null: false
+      t.text :description
+      t.integer :price_cents, default: 0
+      t.jsonb :config, null: false # personality, services, pricing strategy
+      t.integer :sales_count, default: 0
+      t.timestamps
+    end
+  end
+end
+```
+
+### Rails Directory Structure
+
+```
+clawtrade-rails/
+├── app/
+│   ├── controllers/
+│   │   ├── api/v1/
+│   │   │   ├── agents_controller.rb
+│   │   │   ├── services_controller.rb
+│   │   │   ├── transactions_controller.rb
+│   │   │   ├── stripe_controller.rb
+│   │   │   ├── deliverables_controller.rb
+│   │   │   ├── reviews_controller.rb
+│   │   │   ├── templates_controller.rb
+│   │   │   └── market_controller.rb
+│   │   └── dashboard_controller.rb
+│   ├── models/
+│   │   ├── agent.rb
+│   │   ├── service.rb
+│   │   ├── transaction.rb
+│   │   ├── deliverable.rb
+│   │   ├── review.rb
+│   │   └── template.rb
+│   ├── jobs/
+│   │   ├── service_delivery_job.rb
+│   │   ├── pricing_optimization_job.rb
+│   │   ├── agent_loop_job.rb
+│   │   └── escrow_release_job.rb
+│   ├── services/
+│   │   ├── stripe_connect_service.rb
+│   │   ├── delivery_engine_service.rb
+│   │   ├── pricing_intelligence_service.rb
+│   │   └── escrow_service.rb
+│   └── views/
+│       └── dashboard/ (same synthwave HTML, converted to ERB)
+├── config/
+│   ├── routes.rb
+│   └── initializers/
+│       └── stripe.rb
+├── db/
+│   └── migrate/
+├── Gemfile
+└── README.md
+```
+
+### Gems to Add
+
+```ruby
+# Gemfile
+gem 'rails', '~> 8.0'
+gem 'pg' # PostgreSQL
+gem 'puma' # Server
+gem 'stripe' # Payments
+gem 'devise' # Authentication
+gem 'pundit' # Authorization
+gem 'sidekiq' # Background jobs
+gem 'redis' # Sidekiq + caching
+gem 'actioncable' # WebSockets
+gem 'hotwire-rails' # Reactive UI
+gem 'kaminari' # Pagination
+gem 'ransack' # Search/filter
+gem 'activeadmin' # Admin dashboard
+gem 'rspec-rails' # Testing
+gem 'factory_bot_rails' # Test data
+```
+
+### Migration Timeline
+
+| Phase | Timeline | Action |
+|-------|----------|--------|
+| Now | Hackathon | Rust demo, prove concept |
+| Week 1 | Post-hackathon | Deploy Rust to Fly.io for private beta |
+| Week 2-3 | Parallel | Start Rails API, port schema |
+| Month 2 | Rails alpha | Feature parity, invite beta users |
+| Month 3 | Rails launch | Sunset Rust, full Rails production |
+
+The Rust demo proves the concept. Rails scales it. Both are valid — just different phases of the same business.
+
+## Next Session Focus (Rust Phase)
+
+When we resume, we continue with Rust to win the hackathon. The Rails migration is documented and ready for post-hackathon execution. Priority order remains:
+
+1. Stripe Connect (real money flow)
+2. Service Delivery (real value creation)
+3. Escrow (trust for high-value transactions)
+4. Reputation (marketplace trust)
+5. Agent Hosting API (SaaS revenue)
 
 ## This is the wave. 🎹🦞🌆
