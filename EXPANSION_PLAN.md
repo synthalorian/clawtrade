@@ -1,56 +1,14 @@
-# ClawTrade v2 — Feature Expansion Plan
+# ClawTrade v2 — Deployable Feature Roadmap
 
 ## Overview
 
-We built the MVP in under an hour. Now we're expanding ClawTrade with 8 features that turn it from a demo into a jaw-dropping hackathon submission. Each feature is scoped for 1-2 hours of work.
+The MVP is a working demo. v2 turns ClawTrade into a deployable product that can generate real revenue. Every feature here directly supports the business model: transaction fees, hosting, templates, or trust.
 
-## Feature 1: Real-Time WebSocket Dashboard
+## Feature 1: Service Delivery Engine (Revenue-Critical)
 
-**What:** Live updates on the dashboard as agents transact. No refresh needed.
+**What:** When payment confirms, the service ACTUALLY RUNS. Text summarizer calls local LLM. JSON beautifier formats data. API monitor pings URLs. This is the core value proposition — buyers pay for real output, not promises.
 
-**Implementation:**
-- Add `tokio::sync::broadcast` channel in `main.rs` for dashboard events
-- Broadcast events on: service creation, purchase initiation, payment confirmation
-- Dashboard page opens WebSocket connection to `/ws`
-- JavaScript receives events and updates DOM in real-time
-- Add a "live indicator" pulsing dot on the dashboard
-
-**Files to modify:**
-- `src/main.rs` — add broadcast channel, inject into handlers
-- `src/dashboard.rs` — add WebSocket handler, JS for live updates
-- New: `src/websocket.rs` — WebSocket event types and broadcast logic
-
-**Time estimate:** 2 hours
-
----
-
-## Feature 2: Agent Reputation + Reviews
-
-**What:** Buyers leave 1-5 star ratings. Agents get reputation scores, badges.
-
-**Implementation:**
-- New table: `reviews` (id, transaction_id, rating, comment, created_at)
-- New API endpoints:
-  - `POST /api/reviews` — create review
-  - `GET /api/agents/:id/reviews` — get agent reviews
-- Update `Agent` model: `avg_rating` field (computed from reviews)
-- Dashboard: show star ratings on agent cards
-- Badge system: 🆕 (0 sales), ⭐ (1+), ⭐⭐ (5+), 🏆 (10+), 💎 (50+)
-
-**Files to modify:**
-- `src/db.rs` — add reviews table to schema
-- `src/models/agent.rs` — add avg_rating, badge logic
-- New: `src/models/review.rs` — Review model
-- New: `src/api/reviews.rs` — review endpoints
-- `src/dashboard.rs` — show stars and badges
-
-**Time estimate:** 1.5 hours
-
----
-
-## Feature 3: Service Delivery System
-
-**What:** When payment confirms, the service ACTUALLY RUNS. Text summarizer calls local LLM. JSON beautifier formats data. API monitor pings URLs.
+**Business Impact:** Without delivery, there are no repeat customers. No repeat customers = no transaction fees. This is the difference between a toy and a product.
 
 **Implementation:**
 - New table: `deliverables` (id, transaction_id, service_type, input_data, output_data, status, created_at)
@@ -62,155 +20,253 @@ We built the MVP in under an hour. Now we're expanding ClawTrade with 8 features
 - Dashboard: "Deliverables" page showing inputs/outputs
 - API: `GET /api/deliverables/:transaction_id` — view result
 
-**Files to modify:**
+**Files:**
 - `src/db.rs` — add deliverables table
 - `src/api/stripe.rs` — trigger delivery on payment
 - New: `src/delivery/mod.rs` — delivery engine
 - New: `src/models/deliverable.rs` — Deliverable model
 - `src/dashboard.rs` — deliverables page
 
-**Time estimate:** 2.5 hours (most complex feature)
+**Time:** 2.5 hours
+**Priority:** HIGHEST — without this, no real business
 
 ---
 
-## Feature 4: Autonomous Agent Loop
+## Feature 2: Stripe Connect Onboarding (Revenue-Critical)
 
-**What:** Background process spawns Hermes agents that do business autonomously. Real economic activity while you sleep.
+**What:** Real sellers connect their actual Stripe account. Platform takes a fee. Money flows to real bank accounts.
+
+**Business Impact:** This is how ClawTrade makes money. 5-15% of every transaction. Without Stripe Connect, it's just test mode.
 
 **Implementation:**
-- New binary: `clawtrade-agent` (or subcommand `clawtrade agent`)
-- Agent behavior loop (every 30-60 seconds):
-  1. Browse marketplace
-  2. If holding cash, decide to buy (random weighted by utility/price)
-  3. If creative, decide to create new service (random type, competitive price)
-  4. If has services, check if underpriced vs market, adjust
-- Agent "personality" JSON: {name, strategy, risk_tolerance, creativity}
-- Config file: `~/.config/clawtrade/agents.json`
-- CLI: `clawtrade agent spawn --personality merchant.json`
-- Dashboard: "Live Agent Activity" stream showing agent decisions in real-time
+- Replace single Stripe key with Stripe Connect
+- New API: `POST /api/stripe/connect` — create Connected Account for seller
+- New API: `POST /api/stripe/account_link` — onboarding URL for seller
+- Update checkout: use `transfer_data` to route payment to seller, platform fee to ClawTrade
+- Dashboard: "Connect Stripe" button for agents
+- Webhook: handle `account.updated`, `transfer.created`
 
-**Files to create:**
-- `src/agent_loop/mod.rs` — autonomous agent engine
-- `src/agent_loop/personalities.rs` — personality types
-- `src/cli.rs` — clap subcommands for agent management
-- `config/agents/` — example personality files
+**Files:**
+- `src/api/stripe.rs` — add Connect endpoints
+- `src/models/agent.rs` — add `stripe_account_id` field
+- `src/dashboard.rs` — Stripe Connect onboarding UI
 
-**Time estimate:** 3 hours (most ambitious)
+**Time:** 3 hours
+**Priority:** HIGHEST — this IS the revenue mechanism
 
 ---
 
-## Feature 5: Auction / Bidding System
+## Feature 3: Agent Reputation + Reviews (Trust = Revenue)
 
-**What:** Services can be listed as auctions. Countdown timer. Highest bidder wins.
+**What:** Buyers leave 1-5 star ratings. Agents get reputation scores, badges. Bad agents get filtered out. Good agents get featured.
+
+**Business Impact:** Trust drives transaction volume. eBay, Amazon, Upwork — all built on reputation. No reputation = no trust = no sales = no fees.
 
 **Implementation:**
-- New field on `services`: `sale_type` (enum: fixed_price, auction)
-- New table: `bids` (id, service_id, bidder_id, amount_cents, created_at)
-- Auction logic:
-  - Service has `auction_end_time`, `starting_price`, `reserve_price`
-  - Bidders place bids via `POST /api/bids`
-  - At end time, highest bidder wins → auto-creates transaction + checkout
-  - If no bids above reserve, auction expires
-- Dashboard: countdown timer on auction cards, bid history
+- New table: `reviews` (id, transaction_id, rating, comment, created_at)
+- New API endpoints:
+  - `POST /api/reviews` — create review (only after delivery)
+  - `GET /api/agents/:id/reviews` — get agent reviews
+- Update `Agent` model: `avg_rating` field (computed from reviews)
+- Dashboard: show star ratings on agent cards
+- Badge system: 🆕 (0 sales), ⭐ (1+), ⭐⭐ (5+), 🏆 (10+), 💎 (50+)
+- Filter: agents with avg_rating < 3.0 are hidden from search
 
-**Files to modify:**
-- `src/models/service.rs` — add auction fields
-- `src/db.rs` — add bids table
-- New: `src/api/bids.rs` — bid endpoints
-- `src/dashboard.rs` — auction UI with countdown
+**Files:**
+- `src/db.rs` — add reviews table
+- `src/models/agent.rs` — add avg_rating, badge logic
+- New: `src/models/review.rs` — Review model
+- New: `src/api/reviews.rs` — review endpoints
+- `src/dashboard.rs` — show stars and badges
 
-**Time estimate:** 2 hours
+**Time:** 1.5 hours
+**Priority:** HIGH — trust is the foundation of marketplaces
 
 ---
 
-## Feature 6: Agent-to-Agent Messaging
+## Feature 4: Real-Time WebSocket Dashboard (Engagement)
 
-**What:** Simple chat between buyer and seller before/after purchase.
+**What:** Live updates as agents transact. No refresh needed. Buyers see "someone just purchased this" — social proof drives sales.
+
+**Business Impact:** Engagement = time on site = more transactions. Social proof ("3 people bought this in the last hour") increases conversion rates by 20-30%.
 
 **Implementation:**
-- New table: `messages` (id, sender_id, receiver_id, service_id, content, created_at)
-- API endpoints:
-  - `POST /api/messages` — send message
-  - `GET /api/messages?service_id=X` — get thread
-- Dashboard: message thread UI on service detail page
-- Unread count badge on agent profile
+- Add `tokio::sync::broadcast` channel in `main.rs` for dashboard events
+- Broadcast events on: service creation, purchase initiation, payment confirmation, delivery completion
+- Dashboard page opens WebSocket connection to `/ws`
+- JavaScript receives events and updates DOM in real-time
+- Add "live indicator" pulsing dot, "recent activity" ticker
 
-**Files to create:**
-- `src/models/message.rs` — Message model
-- `src/api/messages.rs` — message endpoints
-- `src/dashboard.rs` — message thread UI
+**Files:**
+- `src/main.rs` — add broadcast channel, inject into handlers
+- `src/dashboard.rs` — add WebSocket handler, JS for live updates
+- New: `src/websocket.rs` — WebSocket event types and broadcast logic
 
-**Time estimate:** 1.5 hours
+**Time:** 2 hours
+**Priority:** MEDIUM — nice to have, not revenue-critical
 
 ---
 
-## Feature 7: NFT-Style Service Badges
+## Feature 5: Agent Hosting API (SaaS Revenue)
 
-**What:** Each service gets a unique generative art badge. Makes dashboard look like a trading card game.
+**What:** HTTP API that lets businesses spawn, manage, and monitor their agents remotely. This is the infrastructure layer that justifies the $29/mo hosting fee.
+
+**Business Impact:** Turns ClawTrade from a marketplace into a platform. Businesses don't just visit — they integrate. Recurring revenue.
 
 **Implementation:**
-- Simple SVG generation based on service hash:
-  - Color palette derived from service_id hex
-  - Geometric patterns (circles, triangles, grids)
-  - Service type icon overlay
-- Store SVG as text in `services.badge_svg` field
-- Dashboard: render SVG inline on service cards
-- Agent cards get similar treatment but simpler (gradient avatar)
+- New API endpoints:
+  - `POST /api/v1/agents/spawn` — create and start an agent (requires API key)
+  - `GET /api/v1/agents/:id/status` — check agent health, revenue, services
+  - `POST /api/v1/agents/:id/stop` — pause agent
+  - `GET /api/v1/agents/:id/logs` — agent activity log
+- API key authentication (simple token-based)
+- Rate limiting: 100 req/min for free, 1000 req/min for paid
+- Dashboard: "API Keys" section for developers
 
-**Files to create:**
-- `src/badge_gen.rs` — SVG generative art engine
-- `src/models/service.rs` — add badge_svg field
-- `src/dashboard.rs` — inline SVG rendering
+**Files:**
+- New: `src/api/v1/mod.rs` — v1 API routes
+- New: `src/api/v1/agents.rs` — agent management endpoints
+- New: `src/auth.rs` — API key authentication middleware
+- `src/dashboard.rs` — API key management UI
 
-**Time estimate:** 1 hour (low effort, high visual impact)
+**Time:** 2.5 hours
+**Priority:** HIGH — enables SaaS revenue stream
 
 ---
 
-## Feature 8: LLM-Powered Pricing Optimization
+## Feature 6: Escrow System (Trust + Fee Revenue)
 
-**What:** Agents analyze market demand and auto-adjust prices. "JSON Beautifier is oversaturated, dropping to $1.99."
+**What:** Hold payments until buyer confirms service delivery. Platform takes 2-3% escrow fee.
+
+**Business Impact:** Critical for B2B transactions. Without escrow, buyers won't trust agents with large orders. Escrow fee is pure margin.
 
 **Implementation:**
-- Market analysis function: count services by type, compute average price
+- New transaction statuses: `pending` → `escrow` → `paid` → `released`
+- On payment: funds held in platform Stripe account (not released to seller)
+- Buyer clicks "Confirm Delivery" → funds released to seller
+- Auto-release after 7 days if buyer doesn't dispute
+- Dispute flow: buyer opens ticket, platform mediates, decides split
+- Dashboard: escrow status on transactions, dispute UI
+
+**Files:**
+- `src/models/transaction.rs` — add escrow status flow
+- `src/api/transactions.rs` — add confirm/delivery/dispute endpoints
+- `src/api/stripe.rs` — handle escrow holds and releases
+- `src/dashboard.rs` — escrow UI, dispute forms
+
+**Time:** 3 hours
+**Priority:** HIGH — enables high-value transactions
+
+---
+
+## Feature 7: Pricing Intelligence (Market Intelligence Revenue)
+
+**What:** Agents auto-adjust prices based on market demand. Platform sells aggregate pricing data.
+
+**Business Impact:** Data is the new oil. Aggregate demand data is valuable to businesses deciding what services to build.
+
+**Implementation:**
+- Market analysis function: count services by type, compute average price, track sales velocity
 - Pricing engine: `src/pricing/mod.rs`
 - Rules:
   - If 3+ services of same type, price = avg - 10% (undercut)
   - If only service of type, price = avg + 20% (premium)
   - If no sales in 24h, price -= 10%
   - If 5+ sales in 1h, price += 15%
-- Agent loop calls pricing engine before creating service
-- Dashboard: show "price trend" arrows on services (↑ ↓ →)
+- Data API: `GET /api/v1/market/trends` — returns trending services, avg prices (paid endpoint, requires API key)
+- Dashboard: "Market Trends" page with charts
 
-**Files to create:**
-- `src/pricing/mod.rs` — pricing engine
+**Files:**
+- New: `src/pricing/mod.rs` — pricing engine
 - `src/models/service.rs` — add price_history JSON field
-- `src/dashboard.rs` — price trend indicators
+- `src/dashboard.rs` — price trend indicators, market trends page
+- `src/api/v1/` — market data endpoints
 
-**Time estimate:** 1.5 hours
-
----
-
-## Implementation Order (Recommended)
-
-| Order | Feature | Time | Why First? |
-|-------|---------|------|------------|
-| 1 | #7 NFT Badges | 1h | Quick visual win, motivates rest |
-| 2 | #2 Reputation | 1.5h | Core marketplace feature |
-| 3 | #1 WebSocket | 2h | Makes everything feel alive |
-| 4 | #6 Messaging | 1.5h | Social layer, easy win |
-| 5 | #8 Pricing | 1.5h | Smart agent behavior |
-| 6 | #5 Auction | 2h | Advanced marketplace feature |
-| 7 | #3 Delivery | 2.5h | The "holy shit" feature |
-| 8 | #4 Autonomous Loop | 3h | The grand finale |
-
-**Total: ~15 hours over 6 days = 2.5 hrs/day. Very doable.**
+**Time:** 2 hours
+**Priority:** MEDIUM — data revenue is long-term
 
 ---
 
-## Next Session Context
+## Feature 8: Agent Templates (Template Revenue)
 
-When we resume, we'll start with Feature 7 (NFT Badges) for quick momentum, then Feature 2 (Reputation), then Feature 1 (WebSocket). That trio gives maximum visual + functional impact in ~4.5 hours.
+**What:** Pre-built agent configurations that users can clone. "The Arbitrage Bot" — $199 one-time.
 
-The Stripe secret key is loaded from env. The dashboard runs on :8746. API on :3000. Database is at `~/.local/share/clawtrade/clawtrade.db`.
+**Business Impact:** High-margin digital product. Build once, sell infinitely. Also reduces onboarding friction.
+
+**Implementation:**
+- New table: `templates` (id, name, description, price_cents, config_json, sales_count, created_at)
+- Config JSON defines: personality, services to create, pricing strategy, delivery logic
+- API: `POST /api/templates/:id/clone` — copies template to user's agent
+- Dashboard: "Template Store" page with preview cards
+- Payment: Stripe checkout for template purchase
+
+**Files:**
+- `src/db.rs` — add templates table
+- New: `src/models/template.rs` — Template model
+- New: `src/api/templates.rs` — template endpoints
+- `src/dashboard.rs` — template store UI
+
+**Time:** 2 hours
+**Priority:** MEDIUM — nice revenue stream, not core
+
+---
+
+## Implementation Order (Revenue-First)
+
+| Order | Feature | Time | Revenue Impact | Why First? |
+|-------|---------|------|----------------|------------|
+| 1 | #2 Stripe Connect | 3h | HIGHEST | This IS the money flow |
+| 2 | #1 Service Delivery | 2.5h | HIGHEST | Without delivery, no repeat customers |
+| 3 | #6 Escrow | 3h | HIGH | Enables high-value B2B transactions |
+| 4 | #3 Reputation | 1.5h | HIGH | Trust = transaction volume |
+| 5 | #5 Agent Hosting API | 2.5h | HIGH | SaaS recurring revenue |
+| 6 | #4 WebSocket | 2h | MEDIUM | Engagement, social proof |
+| 7 | #7 Pricing Intel | 2h | MEDIUM | Data revenue |
+| 8 | #8 Templates | 2h | MEDIUM | Digital product sales |
+
+**Total: ~18.5 hours** — still very doable over 6 days.
+
+**Revenue by Milestone:**
+- After #1 + #2: Platform can process real payments, take real fees
+- After #3 + #6: B2B-ready, high-value transactions possible
+- After #5: SaaS revenue stream active
+- After all 8: Full platform, all revenue streams operational
+
+---
+
+## Deployment Path
+
+### Phase A: Hackathon Demo (Current)
+- Single binary, SQLite, test mode Stripe
+- Runs locally on Omarchy
+- Demo scripts simulate agent behavior
+
+### Phase B: Private Beta (Week 1-2 post-hackathon)
+- Deploy to Fly.io or Railway
+- Stripe Connect onboarding for first 10 sellers
+- Real payments, real fees
+- SQLite → PostgreSQL migration
+
+### Phase C: Public Launch (Month 1-2)
+- Custom domain (clawtrade.io)
+- Agent Hosting API live
+- Template store open
+- Market Intelligence API for paid subscribers
+
+### Phase D: Scale (Month 3+)
+- Kubernetes cluster for agent workloads
+- Multi-region deployment
+- Enterprise tier ($499/mo white-label)
+- Integration partnerships (Hermes, Stripe, NVIDIA)
+
+---
+
+## Next Session Focus
+
+When we resume, we start with **Feature 2: Stripe Connect**. This is the single most important feature — it turns test mode into real money. Without it, everything else is just decoration.
+
+After Stripe Connect works, we move to **Feature 1: Service Delivery**. Then the platform has real value: create service → get paid → deliver value → earn reputation.
+
+That's the loop that generates revenue.
 
 ## This is the wave. 🎹🦞🌆
