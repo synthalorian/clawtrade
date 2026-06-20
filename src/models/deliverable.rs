@@ -94,6 +94,7 @@ impl Deliverable {
         Ok(d)
     }
 
+    #[allow(dead_code)]
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Self>> {
         let ds = sqlx::query_as::<_, Deliverable>(
             "SELECT * FROM deliverables ORDER BY created_at DESC",

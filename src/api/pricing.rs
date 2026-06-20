@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 

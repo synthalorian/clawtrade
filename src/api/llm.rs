@@ -1,12 +1,9 @@
 use axum::{
     Json,
-    extract::State,
     http::StatusCode,
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-
 use crate::nvidia::LlmClient;
 
 #[derive(Debug, Deserialize)]

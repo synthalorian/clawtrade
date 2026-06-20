@@ -20,6 +20,7 @@ pub struct SpawnAgentRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AgentStatusResponse {
     pub agent: Agent,
     pub services_count: i64,
@@ -28,6 +29,7 @@ pub struct AgentStatusResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AgentLogEntry {
     pub timestamp: String,
     pub event: String,

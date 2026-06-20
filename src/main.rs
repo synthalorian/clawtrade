@@ -1,7 +1,6 @@
 use anyhow::Result;
 use axum::{
     Router,
-    extract::State,
     routing::{get, post},
 };
 use sqlx::SqlitePool;

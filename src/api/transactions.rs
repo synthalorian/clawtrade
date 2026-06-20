@@ -1,4 +1,3 @@
-use anyhow::Result;
 use axum::{
     Json,
     extract::{Path, State},
@@ -12,6 +11,7 @@ use std::sync::Arc;
 use crate::models::transaction::Transaction;
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct TransactionListResponse {
     pub transactions: Vec<Transaction>,
 }
@@ -102,7 +102,7 @@ pub async fn release_escrow(
 
             // Real Stripe Connect transfer: move funds from platform to seller
             let stripe_secret = std::env::var("STRIPE_SECRET_KEY").ok();
-            if let (Some(secret), Some(stripe_session_id)) = (stripe_secret, &tx.stripe_session_id) {
+            if let (Some(secret), Some(_stripe_session_id)) = (stripe_secret, &tx.stripe_session_id) {
                 let seller = match crate::models::agent::Agent::get_by_id(&pool, &tx.seller_id).await {
                     Ok(Some(a)) => a,
                     _ => {

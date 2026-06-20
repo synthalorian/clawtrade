@@ -20,6 +20,7 @@ pub struct CreateCheckoutRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct CheckoutResponse {
     pub checkout_url: String,
     pub transaction_id: String,
@@ -39,6 +40,7 @@ pub struct ConnectAccountRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct ConnectAccountResponse {
     pub account_id: String,
     pub onboarding_url: String,
@@ -50,6 +52,7 @@ pub struct AccountLinkRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AccountLinkResponse {
     pub url: String,
 }
@@ -178,10 +181,10 @@ pub async fn create_checkout(
 
     if let Some(url) = stripe_data["url"].as_str() {
         let session_id = stripe_data["id"].as_str().unwrap_or("").to_string();
-        if let Err(e) = Transaction::update_stripe_session(&pool, &tx.id, &session_id).await {
+        if let Err(_e) = Transaction::update_stripe_session(&pool, &tx.id, &session_id).await {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
+                Json(serde_json::json!({"error": _e.to_string()})),
             );
         }
         (

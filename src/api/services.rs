@@ -1,4 +1,3 @@
-use anyhow::Result;
 use axum::{
     Json,
     extract::{Path, State},
@@ -12,6 +11,7 @@ use std::sync::Arc;
 use crate::models::service::Service;
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct ServiceListResponse {
     pub services: Vec<Service>,
 }
