@@ -1,8 +1,8 @@
 use anyhow::Result;
 use axum::{
     Router,
+    extract::State,
     routing::{get, post},
-    response::Html,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -14,6 +14,7 @@ mod db;
 mod delivery;
 mod models;
 mod nvidia;
+mod websocket;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,12 +23,10 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Stripe secret key must be set in environment before running
     if std::env::var("STRIPE_SECRET_KEY").is_err() {
         eprintln!("[clawtrade] WARNING: STRIPE_SECRET_KEY not set. Stripe payments will fail.");
     }
 
-    // Determine database path
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("clawtrade");
@@ -37,7 +36,6 @@ async fn main() -> Result<()> {
     let pool = db::init_db(&db_path).await?;
     let state = Arc::new(pool);
 
-    // API routes
     let api_routes = Router::new()
         .route("/api/services", get(api::services::list_services).post(api::services::create_service))
         .route("/api/services/{id}", get(api::services::get_service))
@@ -54,9 +52,9 @@ async fn main() -> Result<()> {
         .route("/api/agents/{id}/reviews", get(api::reviews::list_reviews))
         .route("/api/llm/summarize", post(api::llm::summarize))
         .route("/api/llm/analyze", post(api::llm::analyze))
+        .route("/ws", get(websocket::ws_handler))
         .with_state(state.clone());
 
-    // Dashboard routes
     let dashboard_routes = Router::new()
         .route("/", get(dashboard::index_handler))
         .route("/services", get(dashboard::services_page))
@@ -77,13 +75,11 @@ async fn main() -> Result<()> {
     eprintln!("[clawtrade] API server starting on http://{}", api_addr);
     eprintln!("[clawtrade] Dashboard starting on http://{}", dashboard_addr);
 
-    // Spawn API server
     let api_listener = tokio::net::TcpListener::bind(&api_addr).await?;
     let api_handle = tokio::spawn(async move {
         axum::serve(api_listener, app).await
     });
 
-    // Spawn dashboard server (separate router)
     let dashboard_app = dashboard::dashboard_router(state.clone());
     let dashboard_listener = tokio::net::TcpListener::bind(&dashboard_addr).await?;
     let dashboard_handle = tokio::spawn(async move {

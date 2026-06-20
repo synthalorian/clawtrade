@@ -544,12 +544,39 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
     </script>
     "#;
 
+    let ws_script = r#"
+    <script>
+    const ws = new WebSocket('ws://localhost:3000/ws');
+    ws.onopen = () => console.log('[ws] connected');
+    ws.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+        console.log('[ws] event:', event);
+        // Show toast notification for live events
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:var(--surface-2);border:1px solid var(--accent);color:var(--accent);padding:1rem 1.5rem;border-radius:8px;z-index:1000;font-size:0.9rem;box-shadow:0 0 20px rgba(0,240,255,0.2);';
+        let msg = '';
+        switch(event.type) {
+            case 'ServiceCreated': msg = `🆕 New service: ${event.name}`; break;
+            case 'PurchaseInitiated': msg = `🛒 Purchase: ${event.service_name}`; break;
+            case 'PaymentConfirmed': msg = `✅ Payment: $${(event.amount_cents/100).toFixed(2)}`; break;
+            case 'DeliveryCompleted': msg = `📦 Delivered: ${event.service_type}`; break;
+            case 'AgentConnected': msg = `🔗 Agent connected: ${event.agent_name}`; break;
+        }
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    };
+    ws.onclose = () => console.log('[ws] disconnected');
+    </script>
+    "#;
+
     Html(wrap_page("Agents", &format!(
         r#"
         <div class="section"><h2>All Agents</h2><div class="grid">{}</div></div>
-        {}"#,
+        {}{}"#,
         agents_html,
-        connect_script
+        connect_script,
+        ws_script
     )))
 }
 

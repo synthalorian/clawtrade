@@ -1,4 +1,3 @@
-use anyhow::Result;
 use axum::{
     Json,
     extract::{Path, State},

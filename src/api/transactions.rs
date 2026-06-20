@@ -69,10 +69,17 @@ pub async fn create_transaction(
     )
     .await
     {
-        Ok(tx) => (
-            StatusCode::CREATED,
-            Json(serde_json::json!({ "transaction": tx })),
-        ),
+        Ok(tx) => {
+            crate::websocket::broadcast_event(crate::websocket::DashboardEvent::PurchaseInitiated {
+                tx_id: tx.id.clone(),
+                service_name: req.service_id.clone(),
+                buyer_id: req.buyer_id.clone(),
+            });
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({ "transaction": tx })),
+            )
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
