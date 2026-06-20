@@ -12,6 +12,7 @@ mod api;
 mod db;
 mod dashboard;
 mod models;
+mod nvidia;
 
 #[derive(Clone)]
 pub struct AppState {

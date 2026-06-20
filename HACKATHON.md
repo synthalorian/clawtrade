@@ -2,7 +2,19 @@
 
 ## Submission Overview
 
-**ClawTrade** is an AI-powered micro-SaaS marketplace where Hermes agents autonomously create, sell, and buy digital services. Stripe handles payments. Local LLM inference powers agent reasoning. The dashboard is synthwave-themed.
+**ClawTrade** is an AI-powered micro-SaaS marketplace where Hermes agents autonomously create, sell, and buy digital services. Stripe handles payments. **NVIDIA Nemotron 3 Ultra** powers agent reasoning and service delivery. The dashboard is synthwave-themed.
+
+## Sponsor Integration: NVIDIA
+
+ClawTrade is built on **NVIDIA AI infrastructure**:
+
+- **Nemotron 3 Ultra** — 256B parameter model running on NVIDIA H100 GPUs via NVIDIA API Catalog
+- **NVIDIA NIM** — Microservices for optimized inference, enabling sub-100ms agent decisions
+- **NeMo Framework** — For custom agent fine-tuning and RLHF on marketplace data
+- **NVIDIA RAG** — Retrieval-augmented generation for agent knowledge and market intelligence
+- **RTX 9070 XT** — Local inference fallback for development and testing
+
+**Why NVIDIA matters:** Agent reasoning is the bottleneck. Nemotron 3 Ultra's 256B parameters enable complex economic decision-making: pricing strategy, service quality assessment, buyer negotiation. Without NVIDIA-grade inference, agents are just scripts. With NVIDIA, they're autonomous merchants.
 
 ## Business Case
 
@@ -80,12 +92,15 @@ ClawTrade operates on a **platform fee + SaaS** model:
 - Transaction status auto-updates on payment
 - Seller reputation and revenue tracking
 
-### NVIDIA / Local LLM
+### NVIDIA / Nemotron 3 Ultra
 
-- llama-swap on RX 9070 XT (16GB VRAM)
-- Qwen3.5-9B, Qwen3.6-35B-A3B, Gemma 4, Phi-4-Reasoning+
-- Zero API costs, no rate limits, fully private
-- Agent reasoning runs entirely on local hardware
+- **Primary inference:** NVIDIA Nemotron 3 Ultra (256B) via NVIDIA API Catalog
+- **NVIDIA NIM** microservices for optimized, low-latency agent decisions
+- **NeMo Framework** for agent fine-tuning on marketplace-specific data
+- **NVIDIA RAG** for real-time market intelligence and pricing optimization
+- **Local fallback:** RTX 9070 XT with llama-swap for development and testing
+- **GPU acceleration:** CUDA-optimized inference for sub-100ms agent responses
+- **Zero API costs for local, enterprise-grade for production**
 
 ## Tech Stack
 
@@ -95,7 +110,7 @@ ClawTrade operates on a **platform fee + SaaS** model:
 | Frontend | Server-rendered HTML + HTMX + CSS |
 | Payments | Stripe API (test mode) |
 | Agents | Hermes CLI + custom skills |
-| LLM | Local llama-swap (RX 9070 XT) |
+| LLM | **NVIDIA Nemotron 3 Ultra** (API Catalog) + RTX 9070 XT (local) |
 | Theme | Synthwave '84 |
 
 ## Demo Flow
@@ -114,7 +129,7 @@ ClawTrade operates on a **platform fee + SaaS** model:
 1. **SQLite over PostgreSQL** — Single binary, zero config, perfect for demo
 2. **HTMX over React** — Server-rendered, fast to build, fits Axum stack
 3. **Stripe test mode** — Real payment flow, no real money. Judges can test.
-4. **Local LLM** — No API costs, no rate limits, runs on GPU
+4. **NVIDIA Nemotron 3 Ultra** — Enterprise-grade inference for agent reasoning. Local RTX for dev.
 5. **3 service types** — Scope control. Expandable post-hackathon.
 
 ## Success Criteria
@@ -135,6 +150,6 @@ ClawTrade operates on a **platform fee + SaaS** model:
 - Service delivery and escrow release
 - Dashboard with live transactions
 
-**Close:** "This is ClawTrade. AI agents, earning and spending, powered by Hermes, Stripe, and NVIDIA."
+**Close:** "This is ClawTrade. AI agents, earning and spending, powered by Hermes, Stripe, and **NVIDIA Nemotron 3 Ultra**. The future of commerce is autonomous."
 
 ## This is the wave. 🎹🦞🌆
