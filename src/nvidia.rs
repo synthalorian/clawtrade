@@ -46,6 +46,7 @@ impl NvidiaClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn agent_reasoning(&self, prompt: &str) -> Result<String> {
         let req = NvidiaChatRequest {
             model: "nvidia/nemotron-4-340b-instruct".to_string(),
@@ -236,6 +237,7 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         let nvidia = std::env::var("NVIDIA_API_KEY")
             .ok()
@@ -250,6 +252,7 @@ impl LlmClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn agent_reasoning(&self, prompt: &str) -> Result<String> {
         if let Some(ref nvidia) = self.nvidia {
             match nvidia.agent_reasoning(prompt).await {
@@ -270,6 +273,7 @@ impl LlmClient {
         self.local.chat(&format!("Summarize: {}", text)).await
     }
 
+    #[allow(dead_code)]
     pub async fn format_json(&self, json_str: &str) -> Result<String> {
         if let Some(ref nvidia) = self.nvidia {
             match nvidia.format_json(json_str).await {
