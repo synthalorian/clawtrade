@@ -12,6 +12,8 @@ pub struct Transaction {
     pub amount_cents: i64,
     pub status: String,
     pub stripe_session_id: Option<String>,
+    pub stripe_transfer_id: Option<String>,
+    pub escrow_released_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -28,8 +30,8 @@ impl Transaction {
         let now = Utc::now();
 
         sqlx::query(
-            "INSERT INTO transactions (id, service_id, buyer_id, seller_id, amount_cents, status, stripe_session_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?, ?)",
+            "INSERT INTO transactions (id, service_id, buyer_id, seller_id, amount_cents, status, stripe_session_id, stripe_transfer_id, escrow_released_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, ?, ?)",
         )
         .bind(&id)
         .bind(service_id)
@@ -49,6 +51,8 @@ impl Transaction {
             amount_cents,
             status: "pending".to_string(),
             stripe_session_id: None,
+            stripe_transfer_id: None,
+            escrow_released_at: None,
             created_at: now,
             updated_at: now,
         })
@@ -86,7 +90,7 @@ impl Transaction {
     pub async fn mark_paid_by_stripe_session(pool: &SqlitePool, session_id: &str) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
-            "UPDATE transactions SET status = 'paid', updated_at = ? WHERE stripe_session_id = ?",
+            "UPDATE transactions SET status = 'escrow', updated_at = ? WHERE stripe_session_id = ?",
         )
         .bind(now)
         .bind(session_id)
@@ -104,6 +108,31 @@ impl Transaction {
             crate::models::agent::Agent::increment_sales(pool, &tx.seller_id, tx.amount_cents).await?;
         }
 
+        Ok(())
+    }
+
+    pub async fn release_escrow(pool: &SqlitePool, id: &str) -> Result<()> {
+        let now = Utc::now();
+        sqlx::query(
+            "UPDATE transactions SET status = 'released', escrow_released_at = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(now)
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn dispute_transaction(pool: &SqlitePool, id: &str) -> Result<()> {
+        let now = Utc::now();
+        sqlx::query(
+            "UPDATE transactions SET status = 'disputed', updated_at = ? WHERE id = ?",
+        )
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await?;
         Ok(())
     }
 }
