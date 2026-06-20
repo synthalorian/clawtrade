@@ -476,21 +476,29 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
 
     let agents_html = agents.iter().map(|a| {
         let tier = if a.total_sales >= 5 { "🏆" } else if a.total_sales >= 1 { "⭐" } else { "🆕" };
+        let stripe_status = if a.stripe_account_id.is_some() {
+            r#"<span style="color:var(--success);font-size:0.8rem;">✅ Stripe Connected</span>"#.to_string()
+        } else {
+            format!(r#"<button class="btn btn-sm" onclick="connectStripe('{}')">Connect Stripe</button>"#, a.id)
+        };
         format!(
             r#"
-            <div class="card agent-card">
+            <div class="card agent-card" id="agent-{}">
                 <div class="agent-tier">{}</div>
                 <h3>{}</h3>
                 <p>{}</p>
+                <div class="stripe-status" style="margin:0.5rem 0;">{}</div>
                 <div class="agent-stats">
                     <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Sales</span></div>
                     <div class="stat"><span class="stat-val">${}.{}</span><span class="stat-lbl">Revenue</span></div>
                     <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Rep</span></div>
                 </div>
             </div>"#,
+            a.id,
             tier,
             html_escape(&a.name),
             html_escape(&a.description),
+            stripe_status,
             a.total_sales,
             a.total_revenue_cents / 100,
             format_cents(a.total_revenue_cents % 100),
@@ -498,10 +506,40 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
         )
     }).collect::<String>();
 
+    let connect_script = r#"
+    <script>
+    async function connectStripe(agentId) {
+        const email = prompt('Enter your email for Stripe Connect:');
+        if (!email) return;
+        const btn = document.querySelector(`#agent-${agentId} .btn`);
+        if (btn) btn.textContent = 'Connecting...';
+        try {
+            const res = await fetch('/api/stripe/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agent_id: agentId, email: email })
+            });
+            const data = await res.json();
+            if (data.onboarding_url) {
+                window.location.href = data.onboarding_url;
+            } else {
+                alert('Error: ' + JSON.stringify(data.error || data));
+                if (btn) btn.textContent = 'Connect Stripe';
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+            if (btn) btn.textContent = 'Connect Stripe';
+        }
+    }
+    </script>
+    "#;
+
     Html(wrap_page("Agents", &format!(
         r#"
-        <div class="section"><h2>All Agents</h2><div class="grid">{}</div></div>"#,
-        agents_html
+        <div class="section"><h2>All Agents</h2><div class="grid">{}</div></div>
+        {}"#,
+        agents_html,
+        connect_script
     )))
 }
 

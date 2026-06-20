@@ -11,6 +11,7 @@ pub struct Agent {
     pub reputation_score: i64,
     pub total_sales: i64,
     pub total_revenue_cents: i64,
+    pub stripe_account_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -20,8 +21,8 @@ impl Agent {
         let now = Utc::now();
 
         sqlx::query(
-            "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, created_at)
-             VALUES (?, ?, ?, 0, 0, 0, ?)",
+            "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, stripe_account_id, created_at)
+             VALUES (?, ?, ?, 0, 0, 0, NULL, ?)",
         )
         .bind(&id)
         .bind(name)
@@ -37,6 +38,7 @@ impl Agent {
             reputation_score: 0,
             total_sales: 0,
             total_revenue_cents: 0,
+            stripe_account_id: None,
             created_at: now,
         })
     }
@@ -63,6 +65,17 @@ impl Agent {
             "UPDATE agents SET total_sales = total_sales + 1, total_revenue_cents = total_revenue_cents + ? WHERE id = ?",
         )
         .bind(amount_cents)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_stripe_account(pool: &SqlitePool, id: &str, stripe_account_id: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE agents SET stripe_account_id = ? WHERE id = ?",
+        )
+        .bind(stripe_account_id)
         .bind(id)
         .execute(pool)
         .await?;
