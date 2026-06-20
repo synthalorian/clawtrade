@@ -76,8 +76,8 @@ pub async fn create_checkout(
         Ok(k) => k,
         Err(_) => {
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "STRIPE_SECRET_KEY not configured"})),
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "STRIPE_SECRET_KEY not configured", "demo_mode": true})),
             )
         }
     };
