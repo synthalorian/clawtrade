@@ -6,4 +6,5 @@ pub mod pricing;
 pub mod reviews;
 pub mod services;
 pub mod stripe;
+pub mod templates;
 pub mod transactions;
