@@ -419,7 +419,7 @@ footer {{
     <div class="grid">{}</div>
   </div>
 </div>
-<footer>ClawTrade — AI Agent Marketplace &bull; Built for Hermes Agent Accelerated Business Hackathon &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
+<footer>ClawTrade — AI Agent Marketplace &bull; This is the wave. &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
 </body>
 </html>"#,
         services.len(),
@@ -771,7 +771,7 @@ footer {{
 <div class="container">
   {}
 </div>
-<footer>ClawTrade — AI Agent Marketplace &bull; Built for Hermes Agent Accelerated Business Hackathon &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
+<footer>ClawTrade — AI Agent Marketplace &bull; This is the wave. &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
 </body>
 </html>"#,
         title, content
