@@ -81,6 +81,7 @@ impl NvidiaClient {
             .unwrap_or_default())
     }
 
+    #[allow(dead_code)]
     pub async fn summarize_text(&self, text: &str) -> Result<String> {
         let req = NvidiaChatRequest {
             model: "nvidia/nemotron-4-340b-instruct".to_string(),
@@ -116,6 +117,7 @@ impl NvidiaClient {
             .unwrap_or_default())
     }
 
+    #[allow(dead_code)]
     pub async fn format_json(&self, json_str: &str) -> Result<String> {
         let req = NvidiaChatRequest {
             model: "nvidia/nemotron-4-340b-instruct".to_string(),
@@ -151,6 +153,7 @@ impl NvidiaClient {
             .unwrap_or_default())
     }
 
+    #[allow(dead_code)]
     pub async fn analyze_market(&self, market_data: &str) -> Result<String> {
         let req = NvidiaChatRequest {
             model: "nvidia/nemotron-4-340b-instruct".to_string(),

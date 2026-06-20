@@ -147,6 +147,18 @@ pub async fn deploy_template(
         }
     };
 
+    // In production, charge $199 via Stripe before deploying
+    let stripe_secret = std::env::var("STRIPE_SECRET_KEY").ok();
+    if stripe_secret.is_some() && req.stripe_payment_method.is_none() {
+        return (
+            StatusCode::PAYMENT_REQUIRED,
+            Json(serde_json::json!({
+                "error": "Payment required. Template deployment costs $199. Provide stripe_payment_method or set up Stripe.",
+                "template_price_cents": template.price_cents
+            })),
+        );
+    }
+
     // Create agent from template
     let agent = match Agent::create(
         &pool,

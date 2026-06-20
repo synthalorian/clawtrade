@@ -99,6 +99,53 @@ pub async fn release_escrow(
                     Json(serde_json::json!({"error": "transaction is not in escrow"})),
                 );
             }
+
+            // Real Stripe Connect transfer: move funds from platform to seller
+            let stripe_secret = std::env::var("STRIPE_SECRET_KEY").ok();
+            if let (Some(secret), Some(stripe_session_id)) = (stripe_secret, &tx.stripe_session_id) {
+                let seller = match crate::models::agent::Agent::get_by_id(&pool, &tx.seller_id).await {
+                    Ok(Some(a)) => a,
+                    _ => {
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"error": "seller not found for transfer"})),
+                        );
+                    }
+                };
+
+                if let Some(stripe_account_id) = seller.stripe_account_id {
+                    let client = reqwest::Client::new();
+                    let platform_fee = (tx.amount_cents as f64 * 0.10).round() as i64;
+                    let transfer_amount = tx.amount_cents - platform_fee;
+
+                    let transfer_res = client
+                        .post("https://api.stripe.com/v1/transfers")
+                        .header("Authorization", format!("Bearer {}", secret))
+                        .form(&vec![
+                            ("amount", transfer_amount.to_string()),
+                            ("currency", "usd".to_string()),
+                            ("destination", stripe_account_id),
+                            ("transfer_group", tx.id.clone()),
+                        ])
+                        .send()
+                        .await;
+
+                    match transfer_res {
+                        Ok(res) => {
+                            if let Ok(data) = res.json::<serde_json::Value>().await {
+                                if let Some(transfer_id) = data["id"].as_str() {
+                                    let _ = Transaction::update_stripe_transfer(&pool, &id, transfer_id).await;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[escrow] Stripe transfer failed for tx {}: {}", id, e);
+                            // Continue to release escrow even if transfer fails — manual reconciliation
+                        }
+                    }
+                }
+            }
+
             match Transaction::release_escrow(&pool, &id).await {
                 Ok(()) => (
                     StatusCode::OK,

@@ -87,6 +87,18 @@ impl Transaction {
         Ok(())
     }
 
+    pub async fn update_stripe_transfer(pool: &SqlitePool, id: &str, transfer_id: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE transactions SET stripe_transfer_id = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(transfer_id)
+        .bind(Utc::now())
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn mark_paid_by_stripe_session(pool: &SqlitePool, session_id: &str) -> Result<()> {
         let now = Utc::now();
         sqlx::query(

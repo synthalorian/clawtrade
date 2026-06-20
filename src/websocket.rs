@@ -21,6 +21,7 @@ pub enum DashboardEvent {
 }
 
 pub type EventTx = broadcast::Sender<DashboardEvent>;
+#[allow(dead_code)]
 pub type EventRx = broadcast::Receiver<DashboardEvent>;
 
 static EVENTS: Lazy<EventTx> = Lazy::new(|| {
@@ -28,6 +29,7 @@ static EVENTS: Lazy<EventTx> = Lazy::new(|| {
     tx
 });
 
+#[allow(dead_code)]
 pub fn get_events() -> &'static EventTx {
     &EVENTS
 }
