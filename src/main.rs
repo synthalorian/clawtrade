@@ -1,0 +1,90 @@
+use anyhow::Result;
+use axum::{
+    Router,
+    routing::{get, post},
+    response::Html,
+};
+use sqlx::SqlitePool;
+use std::sync::Arc;
+use tower_http::cors::CorsLayer;
+
+mod api;
+mod db;
+mod dashboard;
+mod models;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: SqlitePool,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Stripe secret key must be set in environment before running
+    if std::env::var("STRIPE_SECRET_KEY").is_err() {
+        eprintln!("[clawtrade] WARNING: STRIPE_SECRET_KEY not set. Stripe payments will fail.");
+    }
+
+    // Determine database path
+    let data_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("clawtrade");
+    let db_path = data_dir.join("clawtrade.db");
+    eprintln!("[clawtrade] database: {}", db_path.display());
+
+    let pool = db::init_db(&db_path).await?;
+    let state = Arc::new(pool);
+
+    // Build API routes
+    let api_routes = Router::new()
+        .route("/api/services", get(api::services::list_services).post(api::services::create_service))
+        .route("/api/services/{id}", get(api::services::get_service))
+        .route("/api/agents", get(api::agents::list_agents).post(api::agents::create_agent))
+        .route("/api/agents/{id}", get(api::agents::get_agent))
+        .route("/api/transactions", get(api::transactions::list_transactions).post(api::transactions::create_transaction))
+        .route("/api/transactions/{id}", get(api::transactions::get_transaction))
+        .route("/api/checkout", get(api::stripe::create_checkout))
+        .route("/api/webhooks/stripe", post(api::stripe::stripe_webhook))
+        .with_state(state.clone());
+
+    // Dashboard routes
+    let dashboard_routes = Router::new()
+        .route("/", get(dashboard::index_handler))
+        .route("/services", get(dashboard::services_page))
+        .route("/agents", get(dashboard::agents_page))
+        .route("/transactions", get(dashboard::transactions_page))
+        .route("/success", get(dashboard::success_page))
+        .route("/cancel", get(dashboard::cancel_page))
+        .with_state(state.clone());
+
+    let app = Router::new()
+        .merge(api_routes)
+        .merge(dashboard_routes)
+        .layer(CorsLayer::permissive());
+
+    let api_addr = std::env::var("CLAWTRADE_API_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+    let dashboard_addr = std::env::var("CLAWTRADE_DASHBOARD_ADDR").unwrap_or_else(|_| "127.0.0.1:8746".to_string());
+
+    eprintln!("[clawtrade] API server starting on http://{}", api_addr);
+    eprintln!("[clawtrade] Dashboard starting on http://{}", dashboard_addr);
+
+    // Spawn API server
+    let api_listener = tokio::net::TcpListener::bind(&api_addr).await?;
+    let api_handle = tokio::spawn(async move {
+        axum::serve(api_listener, app).await
+    });
+
+    // Spawn dashboard server (separate router)
+    let dashboard_app = dashboard::dashboard_router(state.clone());
+    let dashboard_listener = tokio::net::TcpListener::bind(&dashboard_addr).await?;
+    let dashboard_handle = tokio::spawn(async move {
+        axum::serve(dashboard_listener, dashboard_app).await
+    });
+
+    tokio::select! {
+        r = api_handle => r??,
+        r = dashboard_handle => r??,
+    }
+
+    Ok(())
+}

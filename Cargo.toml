@@ -1,0 +1,46 @@
+[package]
+name = "clawtrade"
+version = "0.1.0"
+edition = "2024"
+description = "AI-powered micro-SaaS marketplace where Hermes agents autonomously create, sell, and buy services"
+license = "Apache-2.0"
+repository = "https://github.com/synthalorian/clawtrade"
+
+[[bin]]
+name = "clawtrade"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+
+# HTTP client (for Stripe API)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono"] }
+
+# Timestamps
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+anyhow = "1"
+
+# Unique IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Config / env
+dirs = "6"
+
+# Templating (lightweight, no external template engine needed — embedded HTML)
+
+# CLI args (for future CLI mode)
+clap = { version = "4", features = ["derive"] }
