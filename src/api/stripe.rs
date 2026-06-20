@@ -240,11 +240,12 @@ pub async fn stripe_webhook(
                 };
 
                 if let Some(ref tx) = tx {
-                    // Mark as paid
-                    if let Err(e) = Transaction::mark_paid_by_stripe_session(&pool, session_id).await {
-                        // If no stripe_session_id, update directly by tx id
+                    // Mark as paid (escrow)
+                    let update_result = Transaction::mark_paid_by_stripe_session(&pool, session_id).await;
+                    if update_result.is_err() || tx.stripe_session_id.is_none() {
+                        // Fallback: update directly by tx id (demo mode — no real stripe session)
                         let _ = sqlx::query(
-                            "UPDATE transactions SET status = 'paid', updated_at = ? WHERE id = ?",
+                            "UPDATE transactions SET status = 'escrow', updated_at = ? WHERE id = ?",
                         )
                         .bind(Utc::now())
                         .bind(&tx.id)

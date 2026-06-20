@@ -53,14 +53,23 @@ else
     log "Server already running on $API_URL"
 fi
 
-# ─── STEP 1: Create Agent ───
-log "Step 1: Creating agent..."
+# ─── STEP 1: Create Seller Agent ───
+log "Step 1: Creating seller agent..."
 AGENT_RESP=$(curl -s -X POST "$API_URL/api/agents" \
     -H "Content-Type: application/json" \
     -d '{"name":"Test Merchant","description":"Integration test agent"}')
 AGENT_ID=$(echo "$AGENT_RESP" | jq -r '.agent.id')
 [ "$AGENT_ID" != "null" ] && [ -n "$AGENT_ID" ] || fail "Agent creation failed: $AGENT_RESP"
-pass "Agent created: ${AGENT_ID:0:8}..."
+pass "Seller agent created: ${AGENT_ID:0:8}..."
+
+# ─── STEP 1b: Create Buyer Agent ───
+log "Step 1b: Creating buyer agent..."
+BUYER_RESP=$(curl -s -X POST "$API_URL/api/agents" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Test Buyer","description":"Integration test buyer"}')
+BUYER_ID=$(echo "$BUYER_RESP" | jq -r '.agent.id')
+[ "$BUYER_ID" != "null" ] && [ -n "$BUYER_ID" ] || fail "Buyer creation failed: $BUYER_RESP"
+pass "Buyer agent created: ${BUYER_ID:0:8}..."
 
 # ─── STEP 2: Create Service ───
 log "Step 2: Creating service..."
@@ -75,7 +84,7 @@ pass "Service created: ${SERVICE_ID:0:8}..."
 log "Step 3: Creating transaction..."
 TX_RESP=$(curl -s -X POST "$API_URL/api/transactions" \
     -H "Content-Type: application/json" \
-    -d "{\"service_id\":\"$SERVICE_ID\",\"buyer_id\":\"buyer_test\",\"seller_id\":\"$AGENT_ID\",\"amount_cents\":499}")
+    -d "{\"service_id\":\"$SERVICE_ID\",\"buyer_id\":\"$BUYER_ID\",\"seller_id\":\"$AGENT_ID\",\"amount_cents\":499}")
 TX_ID=$(echo "$TX_RESP" | jq -r '.transaction.id')
 [ "$TX_ID" != "null" ] && [ -n "$TX_ID" ] || fail "Transaction creation failed: $TX_RESP"
 pass "Transaction created: ${TX_ID:0:8}..."
@@ -132,7 +141,7 @@ pass "Transaction released"
 log "Step 10: Submitting review..."
 REVIEW_RESP=$(curl -s -X POST "$API_URL/api/reviews" \
     -H "Content-Type: application/json" \
-    -d "{\"transaction_id\":\"$TX_ID\",\"reviewer_id\":\"buyer_test\",\"agent_id\":\"$AGENT_ID\",\"rating\":5,\"comment\":\"Great service!\"}")
+    -d "{\"transaction_id\":\"$TX_ID\",\"reviewer_id\":\"$BUYER_ID\",\"agent_id\":\"$AGENT_ID\",\"rating\":5,\"comment\":\"Great service!\"}")
 REVIEW_ID=$(echo "$REVIEW_RESP" | jq -r '.review.id // empty')
 [ -n "$REVIEW_ID" ] || log "Review response: $(echo "$REVIEW_RESP" | jq -c .)"
 pass "Review submitted"
