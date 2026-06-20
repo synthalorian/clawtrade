@@ -86,3 +86,71 @@ pub async fn create_transaction(
         ),
     }
 }
+
+pub async fn release_escrow(
+    State(pool): State<Arc<SqlitePool>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match Transaction::get_by_id(&pool, &id).await {
+        Ok(Some(tx)) => {
+            if tx.status != "escrow" {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "transaction is not in escrow"})),
+                );
+            }
+            match Transaction::release_escrow(&pool, &id).await {
+                Ok(()) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "released", "transaction_id": id})),
+                ),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "transaction not found"})),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+pub async fn dispute_transaction(
+    State(pool): State<Arc<SqlitePool>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match Transaction::get_by_id(&pool, &id).await {
+        Ok(Some(tx)) => {
+            if tx.status != "escrow" {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "transaction is not in escrow"})),
+                );
+            }
+            match Transaction::dispute_transaction(&pool, &id).await {
+                Ok(()) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "disputed", "transaction_id": id})),
+                ),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "transaction not found"})),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}

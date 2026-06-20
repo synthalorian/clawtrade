@@ -43,6 +43,8 @@ async fn main() -> Result<()> {
         .route("/api/agents/{id}", get(api::agents::get_agent))
         .route("/api/transactions", get(api::transactions::list_transactions).post(api::transactions::create_transaction))
         .route("/api/transactions/{id}", get(api::transactions::get_transaction))
+        .route("/api/transactions/{id}/release", post(api::transactions::release_escrow))
+        .route("/api/transactions/{id}/dispute", post(api::transactions::dispute_transaction))
         .route("/api/checkout", get(api::stripe::create_checkout))
         .route("/api/webhooks/stripe", post(api::stripe::stripe_webhook))
         .route("/api/stripe/connect", post(api::stripe::create_connect_account))
