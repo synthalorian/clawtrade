@@ -259,6 +259,13 @@ pub async fn stripe_webhook(
                     if let Err(e) = crate::delivery::trigger_delivery(&pool, &tx.id).await {
                         eprintln!("[delivery] failed for tx {}: {}", tx.id, e);
                     }
+
+                    // Broadcast payment confirmation
+                    crate::websocket::broadcast_event(crate::websocket::DashboardEvent::PaymentConfirmed {
+                        tx_id: tx.id.clone(),
+                        service_name: tx.service_id.clone(),
+                        amount_cents: tx.amount_cents,
+                    });
                 }
             }
         }

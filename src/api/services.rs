@@ -71,6 +71,12 @@ pub async fn create_service(
     .await
     {
         Ok(service) => {
+            // Broadcast service creation event
+            crate::websocket::broadcast_event(crate::websocket::DashboardEvent::ServiceCreated {
+                service_id: service.id.clone(),
+                name: service.name.clone(),
+                agent_name: req.agent_id.clone(),
+            });
             (StatusCode::CREATED, Json(serde_json::json!({ "service": service })))
         }
         Err(e) => (

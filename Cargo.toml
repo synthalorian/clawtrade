@@ -44,3 +44,4 @@ dirs = "6"
 
 # CLI args (for future CLI mode)
 clap = { version = "4", features = ["derive"] }
+once_cell = "1.21.4"
