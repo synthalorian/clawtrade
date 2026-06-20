@@ -1,10 +1,10 @@
-use anyhow::Result;
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -209,13 +209,56 @@ pub async fn stripe_webhook(
             let payment_status = session["payment_status"].as_str().unwrap_or("");
 
             if payment_status == "paid" {
-                if let Err(e) =
-                    Transaction::mark_paid_by_stripe_session(&pool, session_id).await
-                {
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({"error": e.to_string()})),
-                    );
+                // First try to find by stripe_session_id
+                let tx_result = sqlx::query_as::<_, Transaction>(
+                    "SELECT * FROM transactions WHERE stripe_session_id = ?",
+                )
+                .bind(session_id)
+                .fetch_optional(&*pool)
+                .await;
+
+                // If not found, check metadata for transaction_id (demo mode)
+                let tx = match tx_result {
+                    Ok(Some(tx)) => Some(tx),
+                    _ => {
+                        if let Some(metadata) = session.get("metadata") {
+                            if let Some(tx_id) = metadata["transaction_id"].as_str() {
+                                sqlx::query_as::<_, Transaction>(
+                                    "SELECT * FROM transactions WHERE id = ?",
+                                )
+                                .bind(tx_id)
+                                .fetch_optional(&*pool)
+                                .await
+                                .unwrap_or(None)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                };
+
+                if let Some(ref tx) = tx {
+                    // Mark as paid
+                    if let Err(e) = Transaction::mark_paid_by_stripe_session(&pool, session_id).await {
+                        // If no stripe_session_id, update directly by tx id
+                        let _ = sqlx::query(
+                            "UPDATE transactions SET status = 'paid', updated_at = ? WHERE id = ?",
+                        )
+                        .bind(Utc::now())
+                        .bind(&tx.id)
+                        .execute(&*pool)
+                        .await;
+
+                        // Increment seller stats
+                        let _ = crate::models::agent::Agent::increment_sales(&pool, &tx.seller_id, tx.amount_cents).await;
+                    }
+
+                    // Trigger service delivery
+                    if let Err(e) = crate::delivery::trigger_delivery(&pool, &tx.id).await {
+                        eprintln!("[delivery] failed for tx {}: {}", tx.id, e);
+                    }
                 }
             }
         }
