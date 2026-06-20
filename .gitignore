@@ -1,0 +1,7 @@
+# ClawTrade
+/target
+*.db
+*.db-journal
+.env
+.secrets/
+Cargo.lock
