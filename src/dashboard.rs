@@ -42,64 +42,80 @@ pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
         Err(_) => vec![],
     };
 
-    let services_html = services.iter().map(|s| {
+    let total_volume = transactions.iter().map(|t| t.amount_cents).sum::<i64>();
+    let paid_count = transactions.iter().filter(|t| t.status == "paid").count();
+
+    let services_html = services.iter().take(6).map(|s| {
         format!(
-            r#"<div class="card">
+            r#"
+            <div class="card service-card">
+                <div class="service-icon">{}</div>
                 <h3>{}</h3>
                 <p>{}</p>
                 <div class="price">${}.{}</div>
                 <div class="meta">by {} &bull; {}</div>
                 <a href="/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
             </div>"#,
+            service_icon(&s.service_type),
             html_escape(&s.name),
             html_escape(&s.description),
             s.price_cents / 100,
-            s.price_cents % 100,
+            format_cents(s.price_cents % 100),
             html_escape(&s.agent_id[..8.min(s.agent_id.len())]),
             html_escape(&s.service_type),
             s.id
         )
     }).collect::<String>();
 
-    let agents_html = agents.iter().map(|a| {
+    let agents_html = agents.iter().take(4).map(|a| {
+        let tier = if a.total_sales >= 5 { "🏆" } else if a.total_sales >= 1 { "⭐" } else { "🆕" };
         format!(
-            r#"<div class="card">
+            r#"
+            <div class="card agent-card">
+                <div class="agent-tier">{}</div>
                 <h3>{}</h3>
                 <p>{}</p>
-                <div class="meta">Rep: {} &bull; Sales: {} &bull; Revenue: ${}.{}</div>
+                <div class="agent-stats">
+                    <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Sales</span></div>
+                    <div class="stat"><span class="stat-val">${}.{}</span><span class="stat-lbl">Revenue</span></div>
+                    <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Rep</span></div>
+                </div>
             </div>"#,
+            tier,
             html_escape(&a.name),
             html_escape(&a.description),
-            a.reputation_score,
             a.total_sales,
             a.total_revenue_cents / 100,
-            a.total_revenue_cents % 100
+            format_cents(a.total_revenue_cents % 100),
+            a.reputation_score
         )
     }).collect::<String>();
 
-    let tx_html = transactions.iter().map(|t| {
+    let activity_html = transactions.iter().take(8).map(|t| {
+        let icon = if t.status == "paid" { "✅" } else { "⏳" };
+        let time_ago = time_since(&t.created_at);
         format!(
-            r#"<div class="card {}">
-                <div class="tx-row">
-                    <span class="tx-id">{}</span>
-                    <span class="tx-status">{}</span>
-                    <span class="tx-amount">${}.{}</span>
+            r#"
+            <div class="activity-item">
+                <span class="activity-icon">{}</span>
+                <div class="activity-details">
+                    <span class="activity-text">{} purchased <strong>{}</strong> from {}</span>
+                    <span class="activity-meta">{} &bull; ${}.{}</span>
                 </div>
-                <div class="meta">Service: {} &bull; Buyer: {} &bull; Seller: {}</div>
             </div>"#,
-            t.status,
-            t.id[..8.min(t.id.len())].to_string(),
-            t.status,
+            icon,
+            html_escape(&t.buyer_id[..8.min(t.buyer_id.len())]),
+            html_escape(&t.service_id[..8.min(t.service_id.len())]),
+            html_escape(&t.seller_id[..8.min(t.seller_id.len())]),
+            time_ago,
             t.amount_cents / 100,
-            t.amount_cents % 100,
-            t.service_id[..8.min(t.service_id.len())].to_string(),
-            t.buyer_id[..8.min(t.buyer_id.len())].to_string(),
-            t.seller_id[..8.min(t.seller_id.len())].to_string(),
+            format_cents(t.amount_cents % 100)
         )
     }).collect::<String>();
 
     Html(format!(
-        r#"<!DOCTYPE html>
+        r#"
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -119,6 +135,7 @@ pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
   --success: #00f0ff;
   --err: #ff006e;
   --font: 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 body {{
@@ -126,6 +143,7 @@ body {{
   color: var(--text);
   font-family: var(--font);
   line-height: 1.6;
+  min-height: 100vh;
 }}
 header {{
   background: linear-gradient(90deg, var(--surface), var(--surface-2));
@@ -134,91 +152,140 @@ header {{
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }}
 header h1 {{
   font-size: 1.8rem;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px rgba(0,240,255,0.3));
 }}
 nav a {{
   color: var(--muted);
   text-decoration: none;
   margin-left: 1.5rem;
   font-weight: 500;
+  transition: color 0.2s;
 }}
-nav a:hover {{ color: var(--accent); }}
+nav a:hover {{ color: var(--accent); text-shadow: 0 0 8px rgba(0,240,255,0.4); }}
+.hero {{
+  text-align: center;
+  padding: 3rem 2rem;
+  background: linear-gradient(180deg, var(--surface-2), var(--bg));
+  border-bottom: 1px solid var(--border);
+}}
+.hero h2 {{
+  font-size: 2.2rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 20px rgba(0,240,255,0.3);
+}}
+.hero p {{
+  color: var(--muted);
+  font-size: 1.1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}}
 .container {{ padding: 2rem; max-width: 1200px; margin: 0 auto; }}
-.section {{ margin-bottom: 2rem; }}
+.section {{ margin-bottom: 2.5rem; }}
 .section h2 {{
   color: var(--accent);
   margin-bottom: 1rem;
   font-size: 1.3rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }}
 .grid {{
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }}
 .card {{
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1.2rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}}
+.card::before {{
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
+  opacity: 0;
+  transition: opacity 0.3s;
 }}
 .card:hover {{
   border-color: var(--accent);
-  box-shadow: 0 0 15px rgba(0,240,255,0.15);
+  box-shadow: 0 0 25px rgba(0,240,255,0.12), 0 8px 32px rgba(0,0,0,0.3);
+  transform: translateY(-2px);
 }}
+.card:hover::before {{ opacity: 1; }}
 .card h3 {{ color: var(--accent); margin-bottom: 0.5rem; font-size: 1.1rem; }}
 .card p {{ color: var(--muted); font-size: 0.9rem; margin-bottom: 0.8rem; }}
-.card .price {{
+.service-icon {{ font-size: 2rem; margin-bottom: 0.5rem; }}
+.agent-card {{ text-align: center; }}
+.agent-tier {{ font-size: 1.5rem; margin-bottom: 0.5rem; }}
+.agent-stats {{
+  display: flex;
+  justify-content: space-around;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}}
+.agent-stats .stat {{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}}
+.agent-stats .stat-val {{
   color: var(--accent-3);
   font-weight: bold;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
+}}
+.agent-stats .stat-lbl {{
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}}
+.price {{
+  color: var(--accent-3);
+  font-weight: bold;
+  font-size: 1.4rem;
   margin-bottom: 0.5rem;
 }}
-.card .meta {{
+.meta {{
   color: var(--muted);
   font-size: 0.8rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 1rem;
 }}
 .btn {{
   display: inline-block;
   background: linear-gradient(90deg, var(--accent-2), var(--accent));
   color: var(--bg);
-  padding: 0.5rem 1.2rem;
-  border-radius: 4px;
+  padding: 0.6rem 1.5rem;
+  border-radius: 6px;
   text-decoration: none;
   font-weight: bold;
   font-size: 0.9rem;
   border: none;
   cursor: pointer;
+  transition: all 0.2s;
 }}
 .btn:hover {{
   opacity: 0.9;
-  box-shadow: 0 0 10px rgba(255,0,110,0.3);
+  box-shadow: 0 0 15px rgba(255,0,110,0.4);
+  transform: scale(1.02);
 }}
-.tx-row {{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}}
-.tx-id {{ font-family: monospace; color: var(--accent); }}
-.tx-status {{
-  background: var(--surface-2);
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-}}
-.tx-status.paid {{ color: var(--success); border: 1px solid var(--success); }}
-.tx-status.pending {{ color: var(--accent-3); border: 1px solid var(--accent-3); }}
-.tx-amount {{ color: var(--accent-3); font-weight: bold; }}
 .stats {{
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -226,21 +293,78 @@ nav a:hover {{ color: var(--accent); }}
   margin-bottom: 2rem;
 }}
 .stat-card {{
-  background: var(--surface);
+  background: linear-gradient(135deg, var(--surface), var(--surface-2));
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 1.5rem;
   text-align: center;
+  transition: all 0.3s;
+}}
+.stat-card:hover {{
+  border-color: var(--accent);
+  box-shadow: 0 0 20px rgba(0,240,255,0.1);
 }}
 .stat-card .value {{
-  font-size: 2rem;
+  font-size: 2.2rem;
   font-weight: bold;
   color: var(--accent);
+  font-family: var(--mono);
+  text-shadow: 0 0 10px rgba(0,240,255,0.3);
 }}
 .stat-card .label {{
   color: var(--muted);
   font-size: 0.85rem;
   text-transform: uppercase;
+  letter-spacing: 0.05em;
+}}
+.activity-feed {{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+}}
+.activity-item {{
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+}}
+.activity-item:last-child {{ border-bottom: none; }}
+.activity-item:hover {{ background: var(--surface-2); }}
+.activity-icon {{ font-size: 1.2rem; }}
+.activity-details {{
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}}
+.activity-text {{ color: var(--text); font-size: 0.9rem; }}
+.activity-text strong {{ color: var(--accent); }}
+.activity-meta {{ color: var(--muted); font-size: 0.8rem; }}
+.tx-row {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}}
+.tx-id {{ font-family: var(--mono); color: var(--accent); font-size: 0.85rem; }}
+.tx-status {{
+  background: var(--surface-2);
+  padding: 0.25rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: bold;
+}}
+.tx-status.paid {{ color: var(--success); border: 1px solid var(--success); }}
+.tx-status.pending {{ color: var(--accent-3); border: 1px solid var(--accent-3); }}
+.tx-amount {{ color: var(--accent-3); font-weight: bold; font-family: var(--mono); }}
+.two-col {{
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
 }}
 footer {{
   text-align: center;
@@ -248,6 +372,12 @@ footer {{
   color: var(--muted);
   font-size: 0.8rem;
   border-top: 1px solid var(--border);
+  margin-top: 2rem;
+}}
+@media (max-width: 768px) {{
+  .stats {{ grid-template-columns: repeat(2, 1fr); }}
+  .two-col {{ grid-template-columns: 1fr; }}
+  header {{ flex-direction: column; gap: 1rem; }}
 }}
 </style>
 </head>
@@ -261,40 +391,45 @@ footer {{
     <a href="/transactions">Transactions</a>
   </nav>
 </header>
+<div class="hero">
+  <h2>AI Agents, Trading Freely</h2>
+  <p>The first marketplace where Hermes agents autonomously create, sell, and buy digital services. Powered by Stripe, local LLMs, and synthwave aesthetics.</p>
+</div>
 <div class="container">
   <div class="stats">
     <div class="stat-card"><div class="value">{}</div><div class="label">Services</div></div>
     <div class="stat-card"><div class="value">{}</div><div class="label">Agents</div></div>
-    <div class="stat-card"><div class="value">{}</div><div class="label">Transactions</div></div>
+    <div class="stat-card"><div class="value">{}</div><div class="label">Paid</div></div>
     <div class="stat-card"><div class="value">${}.{}</div><div class="label">Volume</div></div>
   </div>
 
-  <div class="section">
-    <h2>🔥 Featured Services</h2>
-    <div class="grid">{}</div>
+  <div class="two-col">
+    <div class="section">
+      <h2>🔥 Featured Services</h2>
+      <div class="grid">{}</div>
+    </div>
+    <div class="section">
+      <h2>📡 Live Activity</h2>
+      <div class="activity-feed">{}</div>
+    </div>
   </div>
 
   <div class="section">
     <h2>🤖 Top Agents</h2>
     <div class="grid">{}</div>
   </div>
-
-  <div class="section">
-    <h2>📊 Recent Transactions</h2>
-    <div class="grid">{}</div>
-  </div>
 </div>
-<footer>ClawTrade — AI Agent Marketplace &bull; Built for Hermes Agent Accelerated Business Hackathon</footer>
+<footer>ClawTrade — AI Agent Marketplace &bull; Built for Hermes Agent Accelerated Business Hackathon &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
 </body>
 </html>"#,
         services.len(),
         agents.len(),
-        transactions.len(),
-        transactions.iter().map(|t| t.amount_cents).sum::<i64>() / 100,
-        transactions.iter().map(|t| t.amount_cents).sum::<i64>() % 100,
+        paid_count,
+        total_volume / 100,
+        format_cents(total_volume % 100),
         services_html,
-        agents_html,
-        tx_html
+        if activity_html.is_empty() { "<div class='activity-item'><span class='activity-icon'>🌑</span><div class='activity-details'><span class='activity-text'>No activity yet. Run the demo!</span></div></div>".to_string() } else { activity_html },
+        agents_html
     ))
 }
 
@@ -306,17 +441,20 @@ pub async fn services_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
 
     let services_html = services.iter().map(|s| {
         format!(
-            r#"<div class="card">
+            r#"
+            <div class="card service-card">
+                <div class="service-icon">{}</div>
                 <h3>{}</h3>
                 <p>{}</p>
                 <div class="price">${}.{}</div>
                 <div class="meta">by {} &bull; {}</div>
                 <a href="/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
             </div>"#,
+            service_icon(&s.service_type),
             html_escape(&s.name),
             html_escape(&s.description),
             s.price_cents / 100,
-            s.price_cents % 100,
+            format_cents(s.price_cents % 100),
             html_escape(&s.agent_id[..8.min(s.agent_id.len())]),
             html_escape(&s.service_type),
             s.id
@@ -324,7 +462,8 @@ pub async fn services_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
     }).collect::<String>();
 
     Html(wrap_page("Services", &format!(
-        r#"<div class="section"><h2>All Services</h2><div class="grid">{}</div></div>"#,
+        r#"
+        <div class="section"><h2>All Services</h2><div class="grid">{}</div></div>"#,
         services_html
     )))
 }
@@ -336,23 +475,32 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
     };
 
     let agents_html = agents.iter().map(|a| {
+        let tier = if a.total_sales >= 5 { "🏆" } else if a.total_sales >= 1 { "⭐" } else { "🆕" };
         format!(
-            r#"<div class="card">
+            r#"
+            <div class="card agent-card">
+                <div class="agent-tier">{}</div>
                 <h3>{}</h3>
                 <p>{}</p>
-                <div class="meta">Rep: {} &bull; Sales: {} &bull; Revenue: ${}.{}</div>
+                <div class="agent-stats">
+                    <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Sales</span></div>
+                    <div class="stat"><span class="stat-val">${}.{}</span><span class="stat-lbl">Revenue</span></div>
+                    <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Rep</span></div>
+                </div>
             </div>"#,
+            tier,
             html_escape(&a.name),
             html_escape(&a.description),
-            a.reputation_score,
             a.total_sales,
             a.total_revenue_cents / 100,
-            a.total_revenue_cents % 100
+            format_cents(a.total_revenue_cents % 100),
+            a.reputation_score
         )
     }).collect::<String>();
 
     Html(wrap_page("Agents", &format!(
-        r#"<div class="section"><h2>All Agents</h2><div class="grid">{}</div></div>"#,
+        r#"
+        <div class="section"><h2>All Agents</h2><div class="grid">{}</div></div>"#,
         agents_html
     )))
 }
@@ -365,7 +513,8 @@ pub async fn transactions_page(State(pool): State<Arc<SqlitePool>>) -> Html<Stri
 
     let tx_html = transactions.iter().map(|t| {
         format!(
-            r#"<div class="card {}">
+            r#"
+            <div class="card {}">
                 <div class="tx-row">
                     <span class="tx-id">{}</span>
                     <span class="tx-status {}">{}</span>
@@ -378,7 +527,7 @@ pub async fn transactions_page(State(pool): State<Arc<SqlitePool>>) -> Html<Stri
             t.status,
             t.status,
             t.amount_cents / 100,
-            t.amount_cents % 100,
+            format_cents(t.amount_cents % 100),
             t.service_id[..8.min(t.service_id.len())].to_string(),
             t.buyer_id[..8.min(t.buyer_id.len())].to_string(),
             t.seller_id[..8.min(t.seller_id.len())].to_string(),
@@ -386,7 +535,8 @@ pub async fn transactions_page(State(pool): State<Arc<SqlitePool>>) -> Html<Stri
     }).collect::<String>();
 
     Html(wrap_page("Transactions", &format!(
-        r#"<div class="section"><h2>All Transactions</h2><div class="grid">{}</div></div>"#,
+        r#"
+        <div class="section"><h2>All Transactions</h2><div class="grid">{}</div></div>"#,
         tx_html
     )))
 }
@@ -394,7 +544,8 @@ pub async fn transactions_page(State(pool): State<Arc<SqlitePool>>) -> Html<Stri
 pub async fn success_page(Query(query): Query<TxQuery>) -> Html<String> {
     let tx_id = query.tx_id.unwrap_or_else(|| "unknown".to_string());
     Html(wrap_page("Success", &format!(
-        r#"<div class="section" style="text-align:center;padding:3rem;">
+        r#"
+        <div class="section" style="text-align:center;padding:3rem;">
             <h2 style="color:var(--accent);font-size:2rem;">✅ Payment Successful!</h2>
             <p style="color:var(--muted);margin:1rem 0;">Transaction ID: <code>{}</code></p>
             <p style="color:var(--muted);">Your service is being prepared by the agent.</p>
@@ -407,7 +558,8 @@ pub async fn success_page(Query(query): Query<TxQuery>) -> Html<String> {
 pub async fn cancel_page(Query(query): Query<TxQuery>) -> Html<String> {
     let tx_id = query.tx_id.unwrap_or_else(|| "unknown".to_string());
     Html(wrap_page("Cancelled", &format!(
-        r#"<div class="section" style="text-align:center;padding:3rem;">
+        r#"
+        <div class="section" style="text-align:center;padding:3rem;">
             <h2 style="color:var(--accent-2);font-size:2rem;">❌ Payment Cancelled</h2>
             <p style="color:var(--muted);margin:1rem 0;">Transaction ID: <code>{}</code></p>
             <p style="color:var(--muted);">No payment was processed. Try again when ready.</p>
@@ -419,7 +571,8 @@ pub async fn cancel_page(Query(query): Query<TxQuery>) -> Html<String> {
 
 fn wrap_page(title: &str, content: &str) -> String {
     format!(
-        r#"<!DOCTYPE html>
+        r#"
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -439,6 +592,7 @@ fn wrap_page(title: &str, content: &str) -> String {
   --success: #00f0ff;
   --err: #ff006e;
   --font: 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 body {{
@@ -446,6 +600,7 @@ body {{
   color: var(--text);
   font-family: var(--font);
   line-height: 1.6;
+  min-height: 100vh;
 }}
 header {{
   background: linear-gradient(90deg, var(--surface), var(--surface-2));
@@ -454,73 +609,121 @@ header {{
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }}
 header h1 {{
   font-size: 1.8rem;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px rgba(0,240,255,0.3));
 }}
 nav a {{
   color: var(--muted);
   text-decoration: none;
   margin-left: 1.5rem;
   font-weight: 500;
+  transition: color 0.2s;
 }}
-nav a:hover {{ color: var(--accent); }}
+nav a:hover {{ color: var(--accent); text-shadow: 0 0 8px rgba(0,240,255,0.4); }}
 .container {{ padding: 2rem; max-width: 1200px; margin: 0 auto; }}
-.section {{ margin-bottom: 2rem; }}
+.section {{ margin-bottom: 2.5rem; }}
 .section h2 {{
   color: var(--accent);
   margin-bottom: 1rem;
   font-size: 1.3rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }}
 .grid {{
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }}
 .card {{
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1.2rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}}
+.card::before {{
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
+  opacity: 0;
+  transition: opacity 0.3s;
 }}
 .card:hover {{
   border-color: var(--accent);
-  box-shadow: 0 0 15px rgba(0,240,255,0.15);
+  box-shadow: 0 0 25px rgba(0,240,255,0.12), 0 8px 32px rgba(0,0,0,0.3);
+  transform: translateY(-2px);
 }}
+.card:hover::before {{ opacity: 1; }}
 .card h3 {{ color: var(--accent); margin-bottom: 0.5rem; font-size: 1.1rem; }}
 .card p {{ color: var(--muted); font-size: 0.9rem; margin-bottom: 0.8rem; }}
-.card .price {{
+.service-icon {{ font-size: 2rem; margin-bottom: 0.5rem; }}
+.agent-card {{ text-align: center; }}
+.agent-tier {{ font-size: 1.5rem; margin-bottom: 0.5rem; }}
+.agent-stats {{
+  display: flex;
+  justify-content: space-around;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}}
+.agent-stats .stat {{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}}
+.agent-stats .stat-val {{
   color: var(--accent-3);
   font-weight: bold;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
+}}
+.agent-stats .stat-lbl {{
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}}
+.price {{
+  color: var(--accent-3);
+  font-weight: bold;
+  font-size: 1.4rem;
   margin-bottom: 0.5rem;
 }}
-.card .meta {{
+.meta {{
   color: var(--muted);
   font-size: 0.8rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 1rem;
 }}
 .btn {{
   display: inline-block;
   background: linear-gradient(90deg, var(--accent-2), var(--accent));
   color: var(--bg);
-  padding: 0.5rem 1.2rem;
-  border-radius: 4px;
+  padding: 0.6rem 1.5rem;
+  border-radius: 6px;
   text-decoration: none;
   font-weight: bold;
   font-size: 0.9rem;
   border: none;
   cursor: pointer;
+  transition: all 0.2s;
 }}
 .btn:hover {{
   opacity: 0.9;
-  box-shadow: 0 0 10px rgba(255,0,110,0.3);
+  box-shadow: 0 0 15px rgba(255,0,110,0.4);
+  transform: scale(1.02);
 }}
 .tx-row {{
   display: flex;
@@ -528,23 +731,30 @@ nav a:hover {{ color: var(--accent); }}
   align-items: center;
   margin-bottom: 0.5rem;
 }}
-.tx-id {{ font-family: monospace; color: var(--accent); }}
+.tx-id {{ font-family: var(--mono); color: var(--accent); font-size: 0.85rem; }}
 .tx-status {{
   background: var(--surface-2);
-  padding: 0.2rem 0.6rem;
+  padding: 0.25rem 0.8rem;
   border-radius: 4px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: bold;
 }}
 .tx-status.paid {{ color: var(--success); border: 1px solid var(--success); }}
 .tx-status.pending {{ color: var(--accent-3); border: 1px solid var(--accent-3); }}
-.tx-amount {{ color: var(--accent-3); font-weight: bold; }}
+.tx-amount {{ color: var(--accent-3); font-weight: bold; font-family: var(--mono); }}
 footer {{
   text-align: center;
   padding: 2rem;
   color: var(--muted);
   font-size: 0.8rem;
   border-top: 1px solid var(--border);
+  margin-top: 2rem;
+}}
+@media (max-width: 768px) {{
+  .grid {{ grid-template-columns: 1fr; }}
+  header {{ flex-direction: column; gap: 1rem; }}
 }}
 </style>
 </head>
@@ -561,7 +771,7 @@ footer {{
 <div class="container">
   {}
 </div>
-<footer>ClawTrade — AI Agent Marketplace &bull; Built for Hermes Agent Accelerated Business Hackathon</footer>
+<footer>ClawTrade — AI Agent Marketplace &bull; Built for Hermes Agent Accelerated Business Hackathon &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
 </body>
 </html>"#,
         title, content
@@ -573,4 +783,31 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+fn service_icon(service_type: &str) -> &'static str {
+    match service_type {
+        "text_processing" => "📝",
+        "data_formatting" => "📊",
+        "api_monitor" => "📡",
+        _ => "🔧",
+    }
+}
+
+fn format_cents(cents: i64) -> String {
+    format!("{:02}", cents)
+}
+
+fn time_since(dt: &chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let diff = now - *dt;
+    if diff.num_seconds() < 60 {
+        "just now".to_string()
+    } else if diff.num_minutes() < 60 {
+        format!("{}m ago", diff.num_minutes())
+    } else if diff.num_hours() < 24 {
+        format!("{}h ago", diff.num_hours())
+    } else {
+        format!("{}d ago", diff.num_days())
+    }
 }
