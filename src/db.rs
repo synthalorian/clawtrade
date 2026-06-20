@@ -56,6 +56,18 @@ CREATE TABLE IF NOT EXISTS deliverables (
 );
 
 CREATE INDEX IF NOT EXISTS idx_deliverables_tx ON deliverables(transaction_id);
+
+CREATE TABLE IF NOT EXISTS reviews (
+    id              TEXT PRIMARY KEY,
+    transaction_id  TEXT NOT NULL REFERENCES transactions(id),
+    agent_id        TEXT NOT NULL REFERENCES agents(id),
+    rating          INTEGER NOT NULL,
+    comment         TEXT,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_agent ON reviews(agent_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_tx ON reviews(transaction_id);
 "#;
 
 pub async fn init_db(db_path: &Path) -> Result<SqlitePool> {

@@ -481,12 +481,21 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
         } else {
             format!(r#"<button class="btn btn-sm" onclick="connectStripe('{}')">Connect Stripe</button>"#, a.id)
         };
+        // Convert reputation_score (0-100) to stars (0-5)
+        let stars = (a.reputation_score as f64 / 20.0).round() as i64;
+        let star_display = "⭐".repeat(stars.max(0).min(5) as usize);
+        let star_html = if stars > 0 {
+            format!(r#"<div style="color:var(--accent-3);font-size:0.9rem;margin:0.3rem 0;">{}</div>"#, star_display)
+        } else {
+            r#"<div style="color:var(--muted);font-size:0.8rem;margin:0.3rem 0;">No reviews yet</div>"#.to_string()
+        };
         format!(
             r#"
             <div class="card agent-card" id="agent-{}">
                 <div class="agent-tier">{}</div>
                 <h3>{}</h3>
                 <p>{}</p>
+                {}
                 <div class="stripe-status" style="margin:0.5rem 0;">{}</div>
                 <div class="agent-stats">
                     <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Sales</span></div>
@@ -498,6 +507,7 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
             tier,
             html_escape(&a.name),
             html_escape(&a.description),
+            star_html,
             stripe_status,
             a.total_sales,
             a.total_revenue_cents / 100,
