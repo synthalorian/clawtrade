@@ -129,6 +129,7 @@ pub async fn get_template(Path(id): Path<String>) -> impl IntoResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct DeployTemplateRequest {
+    #[allow(dead_code)]
     pub buyer_id: String,
     pub stripe_payment_method: Option<String>, // For demo, optional
 }
