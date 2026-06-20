@@ -52,6 +52,10 @@ async fn main() -> Result<()> {
         .route("/api/agents/{id}/reviews", get(api::reviews::list_reviews))
         .route("/api/llm/summarize", post(api::llm::summarize))
         .route("/api/llm/analyze", post(api::llm::analyze))
+        .route("/api/v1/agents/spawn", post(api::hosting::spawn_agent))
+        .route("/api/v1/agents/{id}/status", get(api::hosting::agent_status))
+        .route("/api/v1/agents/{id}/stop", post(api::hosting::stop_agent))
+        .route("/api/v1/agents/{id}/logs", get(api::hosting::agent_logs))
         .route("/ws", get(websocket::ws_handler))
         .with_state(state.clone());
 
