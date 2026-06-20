@@ -9,8 +9,9 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
 mod api;
-mod db;
 mod dashboard;
+mod db;
+mod delivery;
 mod models;
 mod nvidia;
 
@@ -48,6 +49,7 @@ async fn main() -> Result<()> {
         .route("/api/webhooks/stripe", post(api::stripe::stripe_webhook))
         .route("/api/stripe/connect", post(api::stripe::create_connect_account))
         .route("/api/stripe/account_link", post(api::stripe::create_account_link))
+        .route("/api/deliverables/{id}", get(api::deliverables::get_deliverable))
         .route("/api/llm/summarize", post(api::llm::summarize))
         .route("/api/llm/analyze", post(api::llm::analyze))
         .with_state(state.clone());

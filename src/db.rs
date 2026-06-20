@@ -43,7 +43,19 @@ CREATE INDEX IF NOT EXISTS idx_services_status ON services(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_buyer ON transactions(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_seller ON transactions(seller_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
-CREATE INDEX IF NOT EXISTS idx_transactions_stripe ON transactions(stripe_session_id);
+CREATE TABLE IF NOT EXISTS deliverables (
+    id              TEXT PRIMARY KEY,
+    transaction_id  TEXT NOT NULL REFERENCES transactions(id),
+    service_type    TEXT NOT NULL,
+    input_data      TEXT,
+    output_data     TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    error_message   TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_deliverables_tx ON deliverables(transaction_id);
 "#;
 
 pub async fn init_db(db_path: &Path) -> Result<SqlitePool> {
