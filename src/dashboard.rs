@@ -28,6 +28,8 @@ pub fn dashboard_router(state: Arc<SqlitePool>) -> Router {
         .route("/deliverable/{id}", get(deliverable_page))
         .route("/success", get(success_page))
         .route("/cancel", get(cancel_page))
+        .route("/monitor", get(monitor_page))
+        .route("/agent-loop", get(agent_loop_page))
         .with_state(state)
 }
 
@@ -178,6 +180,7 @@ nav a {{
   transition: color 0.2s;
 }}
 nav a:hover {{ color: var(--accent); text-shadow: 0 0 8px rgba(0,240,255,0.4); }}
+nav a.active {{ color: var(--accent); border-bottom: 2px solid var(--accent); }}
 .hero {{
   text-align: center;
   padding: 3rem 2rem;
@@ -412,11 +415,13 @@ footer {{
 <header>
   <h1>🦞 ClawTrade</h1>
   <nav>
-    <a href="/">Home</a>
+    <a href="/">Marketplace</a>
     <a href="/services">Services</a>
     <a href="/agents">Agents</a>
     <a href="/transactions">Transactions</a>
-    <a href="/my-purchases">My Purchases</a>
+    <a href="/monitor">Monitor</a>
+    <a href="/agent-loop">Agent Loop</a>
+  </nav>
   </nav>
 </header>
 <div class="hero">
@@ -987,6 +992,7 @@ nav a {{
   transition: color 0.2s;
 }}
 nav a:hover {{ color: var(--accent); text-shadow: 0 0 8px rgba(0,240,255,0.4); }}
+nav a.active {{ color: var(--accent); border-bottom: 2px solid var(--accent); }}
 .container {{ padding: 2rem; max-width: 1200px; margin: 0 auto; }}
 .section {{ margin-bottom: 2.5rem; }}
 .section h2 {{
@@ -1145,11 +1151,13 @@ footer {{
 <header>
   <h1>🦞 ClawTrade</h1>
   <nav>
-    <a href="/">Home</a>
+    <a href="/">Marketplace</a>
     <a href="/services">Services</a>
     <a href="/agents">Agents</a>
     <a href="/transactions">Transactions</a>
-    <a href="/my-purchases">My Purchases</a>
+    <a href="/monitor">Monitor</a>
+    <a href="/agent-loop">Agent Loop</a>
+  </nav>
   </nav>
 </header>
 <div class="container">
@@ -1296,6 +1304,221 @@ fn service_icon(service_type: &str) -> &'static str {
         "analysis" => "🔍",
         _ => "🔧",
     }
+}
+
+pub async fn monitor_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
+    let services = match Service::list_active(&pool).await {
+        Ok(s) => s,
+        Err(_) => vec![],
+    };
+
+    let showcases = services.iter().map(|s| {
+        let (icon, sample_input, sample_output) = match s.service_type.as_str() {
+            "text_processing" => ("📝", "Long article about AI advancement...", "• Key insight one\n• Key insight two\n• Key insight three"),
+            "data_formatting" => ("📊", r#"{"users":[{"id":1,"name":"Alice"}]}"#, "Formatted JSON with validation"),
+            "api_monitor" => ("🌐", "https://api.example.com/health", "Status: 200 OK | Latency: 45ms"),
+            "code_review" => ("💻", "fn process(items: Vec<Item>) -> Result<...>", "✅ Good error handling | ⚠️ Division by zero risk"),
+            "creative_writing" => ("✨", "Cyberpunk marketplace theme", "Neon signs flickered above the chrome walkways..."),
+            "analysis" => ("🔍", "Sales data: Jan $12k, Feb $15k...", "📈 Upward trend | 🎯 Peak at 2-4 PM"),
+            _ => ("🤖", "Custom service input", "Custom service output"),
+        };
+
+        format!(
+            r#"
+            <div class="card showcase-card">
+                <div class="showcase-header">
+                    <span class="showcase-icon">{}</span>
+                    <div>
+                        <h3>{}</h3>
+                        <div class="showcase-type">{}</div>
+                    </div>
+                </div>
+                <p class="showcase-desc">{}</p>
+                <div class="showcase-price">${}.{}</div>
+                <div class="showcase-sample">
+                    <div class="sample-label">Sample Input:</div>
+                    <pre class="sample-code">{}</pre>
+                </div>
+                <div class="showcase-sample">
+                    <div class="sample-label">Sample Output:</div>
+                    <pre class="sample-code">{}</pre>
+                </div>
+                <div class="showcase-meta">
+                    <span>by {}</span>
+                    <a href="/api/monitor/demonstrate/{}" class="btn btn-sm">▶ Live Demo</a>
+                </div>
+            </div>"#,
+            icon, html_escape(&s.name), s.service_type, html_escape(&s.description),
+            s.price_cents / 100, format_cents(s.price_cents % 100),
+            html_escape(sample_input), html_escape(sample_output),
+            html_escape(&s.agent_id[..8.min(s.agent_id.len())]), s.id
+        )
+    }).collect::<String>();
+
+    Html(wrap_page("Service Monitor", &format!(
+        r#"
+        <div class="section">
+            <h2>🔍 Service Monitor — What Do Services Actually Do?</h2>
+            <p style="color:var(--muted);margin-bottom:1.5rem;">
+                See real examples of what each service type produces. Every demonstration uses actual LLM inference or live API calls.
+            </p>
+            <div class="showcase-grid">
+                {}
+            </div>
+        </div>
+        <style>
+        .showcase-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 1.5rem; }}
+        .showcase-card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }}
+        .showcase-header {{ display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }}
+        .showcase-icon {{ font-size: 2rem; }}
+        .showcase-type {{ color: var(--muted); font-size: 0.85rem; text-transform: uppercase; }}
+        .showcase-desc {{ color: var(--text); margin-bottom: 1rem; }}
+        .showcase-price {{ color: var(--accent); font-size: 1.3rem; font-weight: bold; margin-bottom: 1rem; }}
+        .showcase-sample {{ margin-bottom: 0.75rem; }}
+        .sample-label {{ color: var(--accent-3); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 0.25rem; }}
+        .sample-code {{ background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; font-family: var(--mono); font-size: 0.85rem; color: var(--muted); overflow-x: auto; }}
+        .showcase-meta {{ display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }}
+        .btn-sm {{ padding: 0.4rem 0.8rem; font-size: 0.85rem; }}
+        </style>"#,
+        showcases
+    )))
+}
+
+pub async fn agent_loop_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
+    let agents = match Agent::list(&pool).await {
+        Ok(a) => a,
+        Err(_) => vec![],
+    };
+
+    let transactions = match Transaction::list(&pool).await {
+        Ok(t) => t,
+        Err(_) => vec![],
+    };
+
+    let agent_rows = agents.iter().map(|a| {
+        let tier = if a.total_sales >= 5 { "🏆" } else if a.total_sales >= 1 { "⭐" } else { "🆕" };
+        format!(
+            r#"
+            <tr>
+                <td><span class="agent-tier">{}</span> {}</td>
+                <td>{}</td>
+                <td>{}</td>
+                <td>${}.{}</td>
+                <td>{}</td>
+                <td><span class="status-badge status-active">Active</span></td>
+            </tr>"#,
+            tier, html_escape(&a.name), a.total_sales,
+            a.reputation_score, a.total_revenue_cents / 100, format_cents(a.total_revenue_cents % 100),
+            html_escape(&a.description[..40.min(a.description.len())])
+        )
+    }).collect::<String>();
+
+    let recent_tx = transactions.iter().take(10).map(|t| {
+        let status_class = match t.status.as_str() {
+            "escrow" => "status-escrow",
+            "released" => "status-released",
+            "disputed" => "status-disputed",
+            _ => "status-pending",
+        };
+        format!(
+            r#"
+            <tr>
+                <td><code>{}</code></td>
+                <td>${}.{}</td>
+                <td><span class="status-badge {}">{}</span></td>
+                <td>{}</td>
+            </tr>"#,
+            html_escape(&t.id[..8.min(t.id.len())]),
+            t.amount_cents / 100, format_cents(t.amount_cents % 100),
+            status_class, t.status,
+            time_since(&t.created_at)
+        )
+    }).collect::<String>();
+
+    Html(wrap_page("Agent Loop", &format!(
+        r#"
+        <div class="section">
+            <h2>🔄 Agent Loop — Live Autonomous Trading</h2>
+            <p style="color:var(--muted);margin-bottom:1.5rem;">
+                Watch agents autonomously discover, purchase, and review services. Click "Run Tick" to advance the simulation.
+            </p>
+            <div class="action-bar">
+                <button class="btn" onclick="runTick()">▶ Run Tick</button>
+                <button class="btn btn-secondary" onclick="resetLoop()">↺ Reset</button>
+                <span id="tick-status" class="tick-status"></span>
+            </div>
+            <div id="tick-results" class="tick-results"></div>
+        </div>
+
+        <div class="section">
+            <h2>🤖 Active Agents</h2>
+            <table class="data-table">
+                <thead><tr><th>Agent</th><th>Sales</th><th>Rep</th><th>Revenue</th><th>Description</th><th>Status</th></tr></thead>
+                <tbody>{}</tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>📊 Recent Transactions</h2>
+            <table class="data-table">
+                <thead><tr><th>ID</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead>
+                <tbody>{}</tbody>
+            </table>
+        </div>
+
+        <script>
+        async function runTick() {{
+            const status = document.getElementById('tick-status');
+            const results = document.getElementById('tick-results');
+            status.textContent = 'Running...';
+            try {{
+                const resp = await fetch('/api/agents/tick', {{ method: 'POST' }});
+                const data = await resp.json();
+                status.textContent = `Tick complete: ${{data.count}} interactions`;
+                let html = '<div class="interactions">';
+                for (const i of data.interactions || []) {{
+                    const cls = i.success ? 'success' : 'failed';
+                    html += `<div class="interaction ${{cls}}">
+                        <span class="int-type">${{i.type}}</span>
+                        <span class="int-agent">${{i.agent || i.agent_id}}</span>
+                        <span class="int-msg">${{i.service ? 'bought ' + i.service : i.message || ''}}</span>
+                    </div>`;
+                }}
+                html += '</div>';
+                results.innerHTML = html;
+            }} catch (e) {{
+                status.textContent = 'Error: ' + e.message;
+            }}
+        }}
+        function resetLoop() {{
+            document.getElementById('tick-results').innerHTML = '';
+            document.getElementById('tick-status').textContent = 'Reset';
+        }}
+        </script>
+        <style>
+        .action-bar {{ display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; }}
+        .tick-status {{ color: var(--accent); font-weight: 500; }}
+        .tick-results {{ margin-bottom: 2rem; }}
+        .interactions {{ display: flex; flex-direction: column; gap: 0.5rem; }}
+        .interaction {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; display: flex; gap: 1rem; align-items: center; }}
+        .interaction.success {{ border-left: 3px solid var(--success); }}
+        .interaction.failed {{ border-left: 3px solid var(--err); }}
+        .int-type {{ color: var(--accent); font-weight: bold; min-width: 100px; }}
+        .int-agent {{ color: var(--accent-3); min-width: 120px; }}
+        .int-msg {{ color: var(--muted); }}
+        .btn-secondary {{ background: var(--surface-2); }}
+        .data-table {{ width: 100%; border-collapse: collapse; }}
+        .data-table th {{ text-align: left; padding: 0.75rem; color: var(--accent); border-bottom: 1px solid var(--border); }}
+        .data-table td {{ padding: 0.75rem; border-bottom: 1px solid var(--border); color: var(--text); }}
+        .status-badge {{ padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; text-transform: uppercase; }}
+        .status-active {{ background: rgba(0,240,255,0.1); color: var(--accent); }}
+        .status-escrow {{ background: rgba(255,190,11,0.1); color: var(--accent-3); }}
+        .status-released {{ background: rgba(0,240,255,0.1); color: var(--accent); }}
+        .status-disputed {{ background: rgba(255,0,110,0.1); color: var(--accent-2); }}
+        .agent-tier {{ font-size: 1.2rem; }}
+        </style>"#,
+        agent_rows, recent_tx
+    )))
 }
 
 fn format_cents(cents: i64) -> String {
