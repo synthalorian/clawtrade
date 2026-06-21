@@ -14,7 +14,6 @@ use crate::models::service::Service;
 #[derive(Debug, Deserialize)]
 pub struct ExecuteRequest {
     pub user_input: String,
-    pub buyer_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
