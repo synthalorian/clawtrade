@@ -191,25 +191,28 @@ impl NvidiaClient {
     }
 }
 
-/// Fallback to local llama-swap when NVIDIA API is unavailable
+/// Local llama-swap client (OpenAI-compatible API)
 pub struct LocalLlmClient {
     base_url: String,
+    model: String,
     client: reqwest::Client,
 }
 
 impl LocalLlmClient {
-    pub fn new(base_url: String) -> Self {
+    pub fn new(base_url: String, model: String) -> Self {
         Self {
             base_url,
+            model,
             client: reqwest::Client::new(),
         }
     }
 
-    pub async fn chat(&self, prompt: &str) -> Result<String> {
+    pub async fn chat(&self, system: &str, user: &str) -> Result<String> {
         let req = serde_json::json!({
-            "model": "local",
+            "model": self.model,
             "messages": [
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system},
+                {"role": "user", "content": user}
             ],
             "temperature": 0.7,
             "max_tokens": 512
@@ -228,6 +231,10 @@ impl LocalLlmClient {
             .unwrap_or("")
             .to_string())
     }
+
+    pub async fn chat_simple(&self, prompt: &str) -> Result<String> {
+        self.chat("You are a helpful AI assistant.", prompt).await
+    }
 }
 
 /// Unified LLM client that prefers NVIDIA, falls back to local
@@ -245,10 +252,12 @@ impl LlmClient {
 
         let local_url = std::env::var("LLM_LOCAL_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+        let local_model = std::env::var("LLM_LOCAL_MODEL")
+            .unwrap_or_else(|_| "synthclaw-9b-128k".to_string());
 
         Self {
             nvidia,
-            local: LocalLlmClient::new(local_url),
+            local: LocalLlmClient::new(local_url, local_model),
         }
     }
 
@@ -260,7 +269,7 @@ impl LlmClient {
                 Err(e) => eprintln!("[llm] NVIDIA fallback to local: {}", e),
             }
         }
-        self.local.chat(prompt).await
+        self.local.chat_simple(prompt).await
     }
 
     pub async fn summarize(&self, text: &str) -> Result<String> {
@@ -270,7 +279,7 @@ impl LlmClient {
                 Err(e) => eprintln!("[llm] NVIDIA fallback to local: {}", e),
             }
         }
-        self.local.chat(&format!("Summarize: {}", text)).await
+        self.local.chat_simple(&format!("Summarize: {}", text)).await
     }
 
     #[allow(dead_code)]
@@ -282,7 +291,7 @@ impl LlmClient {
             }
         }
         self.local
-            .chat(&format!("Format this JSON: {}", json_str))
+            .chat_simple(&format!("Format this JSON: {}", json_str))
             .await
     }
 
@@ -294,7 +303,7 @@ impl LlmClient {
             }
         }
         self.local
-            .chat(&format!("Analyze market data: {}", data))
+            .chat_simple(&format!("Analyze market data: {}", data))
             .await
     }
 }
