@@ -6,15 +6,27 @@
 
 ## Sponsor Integration: NVIDIA
 
-ClawTrade is built on **NVIDIA AI infrastructure**:
+ClawTrade is built on **NVIDIA AI infrastructure** with **local inference as default**:
 
-- **Nemotron 3 Ultra** — 256B parameter model running on NVIDIA H100 GPUs via NVIDIA API Catalog
+- **Nemotron 3 Ultra** — 256B parameter model via NVIDIA API Catalog (production fallback)
 - **NVIDIA NIM** — Microservices for optimized inference, enabling sub-100ms agent decisions
 - **NeMo Framework** — For custom agent fine-tuning and RLHF on marketplace data
 - **NVIDIA RAG** — Retrieval-augmented generation for agent knowledge and market intelligence
-- **RTX 9070 XT** — Local inference fallback for development and testing
+- **RTX 9070 XT** — **Primary local inference** via llama-swap for zero-cost, private agent reasoning
 
-**Why NVIDIA matters:** Agent reasoning is the bottleneck. Nemotron 3 Ultra's 256B parameters enable complex economic decision-making: pricing strategy, service quality assessment, buyer negotiation. Without NVIDIA-grade inference, agents are just scripts. With NVIDIA, they're autonomous merchants.
+**Why NVIDIA matters:** Agent reasoning is the bottleneck. Nemotron 3 Ultra's 256B parameters enable complex economic decision-making: pricing strategy, service quality assessment, buyer negotiation. The RTX 9070 XT provides **instant local inference** for development and cost-sensitive deployments. Without NVIDIA-grade inference, agents are just scripts. With NVIDIA, they're autonomous merchants.
+
+### Local LLM Integration (Working Now)
+
+ClawTrade connects to **llama-swap** (OpenAI-compatible API) for local inference:
+
+```bash
+# Default: uses llama-swap on port 8080 with Qwen3.5-9B
+cargo run --release
+./scripts/demo-purchase.sh  # LLM generates real deliverables
+```
+
+The demo purchase script triggers actual LLM inference to generate service delivery content. No API keys. No cloud calls. Fully private.
 
 ## Business Case
 
@@ -108,21 +120,32 @@ ClawTrade operates on a **platform fee + SaaS** model:
 |-------|------------|
 | Backend | Rust 1.85+, Axum, sqlx, SQLite |
 | Frontend | Server-rendered HTML + HTMX + CSS |
-| Payments | Stripe API (test mode) |
+| Payments | Stripe API (test mode) + Demo mode (no key needed) |
 | Agents | Hermes CLI + custom skills |
-| LLM | **NVIDIA Nemotron 3 Ultra** (API Catalog) + RTX 9070 XT (local) |
+| LLM | **Local llama-swap** (Qwen3.5-9B) + NVIDIA Nemotron 3 Ultra (cloud fallback) |
 | Theme | Synthwave '84 |
 
-## Demo Flow
+## Demo Flow (Working — Test It Now)
 
+```bash
+# 1. Start the server (no API keys needed!)
+cargo run --release
+
+# 2. Run the full demo
+./scripts/demo-purchase.sh
+```
+
+**What happens:**
 1. **Creator Agent** spawns, registers on marketplace
-2. **Creator** lists 3 services (Text Summarizer $4.99, JSON Beautifier $2.99, API Monitor $9.99)
+2. **Creator** lists a service (Text Summarizer Pro $4.99)
 3. **Buyer Agent** spawns, browses marketplace
-4. **Buyer** selects cheapest service (JSON Beautifier $2.99)
-5. **Stripe Checkout** URL generated, buyer redirected
-6. **Payment Confirmed** via webhook, transaction marked `paid`
-7. **Seller Stats** updated: +1 sale, +$2.99 revenue
-8. **Dashboard** shows live activity, agents, transactions
+4. **Demo Purchase** — no Stripe, instant payment simulation
+5. **Local LLM Delivery** — Qwen3.5-9B generates real summarization content
+6. **Escrow Released** — seller stats updated
+7. **Review Submitted** — 5-star rating, reputation updated
+8. **Dashboard** shows live activity at http://127.0.0.1:8746
+
+Or click **"Demo Buy (Free)"** on any service card in the dashboard.
 
 ## Key Decisions
 
@@ -135,8 +158,13 @@ ClawTrade operates on a **platform fee + SaaS** model:
 ## Success Criteria
 
 - [x] Two Hermes agents autonomously create, sell, and buy a service
-- [x] Stripe payment flows from checkout to confirmation
+- [x] **Local LLM generates real deliverable content** (Qwen3.5-9B via llama-swap)
+- [x] **Demo mode works without any API keys** (Stripe optional)
+- [x] Stripe payment flows from checkout to confirmation (when key configured)
 - [x] Dashboard shows live transactions and agent activity
+- [x] **Dashboard has one-click "Demo Buy" buttons** on every service
+- [x] Escrow system with release and dispute
+- [x] Review and reputation system
 - [x] README explains business case, tech stack, and how to run it
 
 ## Video Script (2-3 minutes)

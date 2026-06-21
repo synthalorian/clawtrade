@@ -61,6 +61,114 @@ fn stripe_secret() -> Option<String> {
     std::env::var("STRIPE_SECRET_KEY").ok()
 }
 
+/// Demo purchase — no Stripe required. Creates transaction, simulates payment, triggers delivery.
+#[derive(Debug, Deserialize)]
+pub struct DemoPurchaseRequest {
+    pub service_id: String,
+    pub buyer_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DemoPurchaseResponse {
+    pub transaction_id: String,
+    pub status: String,
+    pub message: String,
+    pub deliverable_url: String,
+}
+
+pub async fn demo_purchase(
+    State(pool): State<Arc<SqlitePool>>,
+    Json(req): Json<DemoPurchaseRequest>,
+) -> impl IntoResponse {
+    let service = match Service::get_by_id(&pool, &req.service_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("service {} not found", req.service_id)})),
+            )
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("db error: {}", e)})),
+            )
+        }
+    };
+
+    // Ensure buyer exists
+    if let Err(e) = Agent::get_or_create_guest(&pool, &req.buyer_id).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("buyer creation failed: {}", e)})),
+        );
+    }
+
+    // Create transaction
+    let tx = match Transaction::create(
+        &pool,
+        &req.service_id,
+        &req.buyer_id,
+        &service.agent_id,
+        service.price_cents,
+    )
+    .await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
+    };
+
+    // Simulate payment → escrow
+    let _ = sqlx::query(
+        "UPDATE transactions SET status = 'escrow', updated_at = ? WHERE id = ?",
+    )
+    .bind(Utc::now())
+    .bind(&tx.id)
+    .execute(&*pool)
+    .await;
+
+    // Increment seller stats
+    let _ = Agent::increment_sales(&pool, &service.agent_id, service.price_cents).await;
+
+    // Trigger delivery
+    let delivery_result = crate::delivery::trigger_delivery(&pool, &tx.id).await;
+    if let Err(e) = &delivery_result {
+        eprintln!("[demo] delivery failed for tx {}: {}", tx.id, e);
+    }
+
+    // Broadcast events
+    crate::websocket::broadcast_event(crate::websocket::DashboardEvent::PurchaseInitiated {
+        tx_id: tx.id.clone(),
+        service_name: service.name.clone(),
+        buyer_id: req.buyer_id.clone(),
+    });
+    crate::websocket::broadcast_event(crate::websocket::DashboardEvent::PaymentConfirmed {
+        tx_id: tx.id.clone(),
+        service_name: service.name.clone(),
+        amount_cents: service.price_cents,
+    });
+
+    let message = if delivery_result.is_ok() {
+        "Demo purchase completed! Payment simulated, delivery triggered."
+    } else {
+        "Demo purchase completed! Payment simulated, delivery had issues (check logs)."
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!(DemoPurchaseResponse {
+            transaction_id: tx.id.clone(),
+            status: "escrow".to_string(),
+            message: message.to_string(),
+            deliverable_url: format!("http://127.0.0.1:3000/api/deliverables/{}", tx.id),
+        })),
+    )
+}
 
 pub async fn create_checkout(
     State(pool): State<Arc<SqlitePool>>,
@@ -81,6 +189,14 @@ pub async fn create_checkout(
             )
         }
     };
+
+    // Ensure buyer exists (auto-create guest if needed)
+    if let Err(e) = Agent::get_or_create_guest(&pool, &req.buyer_id).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("buyer creation failed: {}", e)})),
+        );
+    }
 
     let tx = match Transaction::create(
         &pool,

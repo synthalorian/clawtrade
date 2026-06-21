@@ -55,7 +55,16 @@ impl Service {
 
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Self>> {
         let services = sqlx::query_as::<_, Service>(
-            "SELECT * FROM services WHERE status = 'active' ORDER BY created_at DESC",
+            "SELECT * FROM services ORDER BY created_at DESC",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(services)
+    }
+
+    pub async fn list_active(pool: &SqlitePool) -> Result<Vec<Self>> {
+        let services = sqlx::query_as::<_, Service>(
+            "SELECT * FROM services WHERE status = 'active' ORDER BY created_at DESC LIMIT 12",
         )
         .fetch_all(pool)
         .await?;

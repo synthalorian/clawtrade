@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     response::Html,
     routing::get,
 };
@@ -9,6 +9,7 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::agent::Agent;
+use crate::models::deliverable::Deliverable;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
 
@@ -23,17 +24,19 @@ pub fn dashboard_router(state: Arc<SqlitePool>) -> Router {
         .route("/services", get(services_page))
         .route("/agents", get(agents_page))
         .route("/transactions", get(transactions_page))
+        .route("/my-purchases", get(my_purchases_page))
+        .route("/deliverable/{id}", get(deliverable_page))
         .route("/success", get(success_page))
         .route("/cancel", get(cancel_page))
         .with_state(state)
 }
 
 pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let services = match Service::list(&pool).await {
+    let services = match Service::list_active(&pool).await {
         Ok(s) => s,
         Err(_) => vec![],
     };
-    let agents = match Agent::list(&pool).await {
+    let agents = match Agent::list_top(&pool).await {
         Ok(a) => a,
         Err(_) => vec![],
     };
@@ -54,7 +57,10 @@ pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
                 <p>{}</p>
                 <div class="price">${}.{}</div>
                 <div class="meta">by {} &bull; {}</div>
-                <a href="http://localhost:3000/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
+                <div class="buy-row">
+                  <a href="http://localhost:3000/api/checkout?service_id={}&buyer_id=anonymous" class="btn">Buy with Stripe</a>
+                  <button class="btn btn-try" id="try-btn-{}">▶ Try</button>
+                </div>
             </div>"#,
             service_icon(&s.service_type),
             html_escape(&s.name),
@@ -63,6 +69,7 @@ pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
             format_cents(s.price_cents % 100),
             html_escape(&s.agent_id[..8.min(s.agent_id.len())]),
             html_escape(&s.service_type),
+            s.id,
             s.id
         )
     }).collect::<String>();
@@ -366,6 +373,26 @@ nav a:hover {{ color: var(--accent); text-shadow: 0 0 8px rgba(0,240,255,0.4); }
   grid-template-columns: 2fr 1fr;
   gap: 1.5rem;
 }}
+.buy-row {{
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}}
+.btn-demo {{
+  background: linear-gradient(90deg, var(--accent-3), var(--accent));
+  color: var(--bg);
+}}
+.btn-demo:hover {{
+  box-shadow: 0 0 15px rgba(255,190,11,0.4);
+}}
+.btn-try {{
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  color: var(--bg);
+  padding: 0.6rem 1rem;
+}}
+.btn-try:hover {{
+  box-shadow: 0 0 15px rgba(0,240,255,0.4);
+}}
 footer {{
   text-align: center;
   padding: 2rem;
@@ -383,12 +410,13 @@ footer {{
 </head>
 <body>
 <header>
-  <h1>🎹🦞 ClawTrade</h1>
+  <h1>🦞 ClawTrade</h1>
   <nav>
     <a href="/">Home</a>
     <a href="/services">Services</a>
     <a href="/agents">Agents</a>
     <a href="/transactions">Transactions</a>
+    <a href="/my-purchases">My Purchases</a>
   </nav>
 </header>
 <div class="hero">
@@ -420,6 +448,123 @@ footer {{
   </div>
 </div>
 <footer>ClawTrade — AI Agent Marketplace &bull; This is the wave. &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
+<script>
+// Account state management
+function getAccount() {{
+  try {{ return JSON.parse(localStorage.getItem('clawAccount')); }} catch(e) {{ return null; }}
+}}
+function isLinked() {{ return !!getAccount(); }}
+function getTries() {{
+  try {{ return JSON.parse(localStorage.getItem('clawTries') || String.fromCharCode(123,125)); }} catch(e) {{ return {{}}; }}
+}}
+function hasTried(serviceId) {{
+  return !!getTries()[serviceId];
+}}
+function recordTry(serviceId) {{
+  const tries = getTries();
+  tries[serviceId] = true;
+  localStorage.setItem('clawTries', JSON.stringify(tries));
+}}
+
+function initTryButtons() {{
+  document.querySelectorAll('.btn-try').forEach(btn => {{
+    const id = btn.id.replace('try-btn-', '');
+    if (!id) return;
+    
+    if (isLinked()) {{
+      // Linked users: no try button, upgrade to buy
+      btn.style.display = 'none';
+      return;
+    }}
+    
+    if (hasTried(id)) {{
+      btn.textContent = '🔗 Link Account';
+      btn.style.background = 'var(--surface-2)';
+      btn.style.border = '1px solid var(--accent)';
+      btn.onclick = function() {{ showLinkAccountModal(); }};
+    }} else {{
+      btn.onclick = function() {{ tryService(id); }};
+    }}
+  }});
+}}
+
+function showLinkAccountModal() {{
+  const modal = document.createElement('div');
+  modal.id = 'link-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:2rem;';
+  modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--accent-2);border-radius:12px;max-width:500px;width:100%;padding:2rem;text-align:center;"><h3 style="color:var(--accent-2);margin-bottom:1rem;">🔗 Account Required</h3><p style="color:var(--muted);margin-bottom:1.5rem;line-height:1.6;">You\'ve used your free try! To continue using ClawTrade services, create a free account or sign in.</p><div style="display:flex;flex-direction:column;gap:0.75rem;"><button onclick="createAccount()" class="btn" style="width:100%;">Create Free Account</button><button onclick="document.getElementById(\'link-modal\').remove()" style="background:var(--surface-2);color:var(--text);padding:0.6rem 1.5rem;border-radius:6px;border:1px solid var(--border);cursor:pointer;width:100%;">Maybe Later</button></div><p style="color:var(--muted);font-size:0.8rem;margin-top:1rem;">Already have an account? You\'re signed in on this device.</p></div>';
+  document.body.appendChild(modal);
+}}
+
+function createAccount() {{
+  const id = 'user_' + Math.random().toString(36).slice(2, 10);
+  const account = {{ id: id, name: 'User ' + id.slice(-4), created: Date.now() }};
+  localStorage.setItem('clawAccount', JSON.stringify(account));
+  document.getElementById('link-modal')?.remove();
+  alert('Account created! You can now purchase services with Stripe.');
+  location.reload();
+}}
+
+function tryService(serviceId) {{
+  if (isLinked()) {{
+    alert('Please purchase this service to use it.');
+    return;
+  }}
+  if (hasTried(serviceId)) {{
+    showLinkAccountModal();
+    return;
+  }}
+  
+  const modal = document.createElement('div');
+  modal.id = 'try-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:2rem;';
+  modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--accent);border-radius:12px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:2rem;"><h3 style="color:var(--accent);margin-bottom:1rem;">🚀 Try Service (1 Free)</h3><p style="color:var(--muted);margin-bottom:1rem;font-size:0.9rem;">Enter your text below and click Run to see the LLM-generated result. <strong style="color:var(--accent-3);">One free try per service.</strong></p><textarea id="try-input" style="width:100%;min-height:120px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1rem;color:var(--text);font-family:var(--mono);font-size:0.9rem;resize:vertical;" placeholder="Enter text to process..."></textarea><div style="margin-top:1rem;display:flex;gap:0.5rem;justify-content:flex-end;"><button onclick="document.getElementById(String.fromCharCode(116,114,121,45,109,111,100,97,108)).remove()" style="background:var(--surface-2);color:var(--text);padding:0.6rem 1.5rem;border-radius:6px;border:1px solid var(--border);cursor:pointer;">Cancel</button><button id="try-run-btn" class="btn">▶ Run Service</button></div><div id="try-loading" style="display:none;text-align:center;padding:2rem;color:var(--muted);"><div style="font-size:2rem;margin-bottom:1rem;">⚡</div><div>Processing with local LLM...</div><div style="font-size:0.8rem;margin-top:0.5rem;">This may take 3-5 seconds</div></div><pre id="try-result" style="display:none;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:0.85rem;line-height:1.6;color:var(--text);max-height:400px;margin-top:1rem;"></pre></div>';
+  document.body.appendChild(modal);
+  document.getElementById('try-run-btn').addEventListener('click', function() {{ runTryService(serviceId); }});
+}}
+
+async function runTryService(serviceId) {{
+  const userInput = document.getElementById('try-input').value;
+  const runBtn = document.getElementById('try-run-btn');
+  runBtn.disabled = true;
+  runBtn.textContent = 'Running...';
+  document.getElementById('try-loading').style.display = 'block';
+  document.getElementById('try-result').style.display = 'none';
+  
+  try {{
+    const resp = await fetch('http://localhost:3000/api/services/' + serviceId + '/execute', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{user_input: userInput || 'Sample text for processing'}})
+    }});
+    const data = await resp.json();
+    document.getElementById('try-loading').style.display = 'none';
+    const resultEl = document.getElementById('try-result');
+    resultEl.style.display = 'block';
+    if (data.result) {{
+      resultEl.textContent = data.result;
+      recordTry(serviceId);
+    }} else {{
+      resultEl.textContent = 'Error: ' + (data.error || 'Unknown error');
+    }}
+  }} catch (e) {{
+    document.getElementById('try-loading').style.display = 'none';
+    const resultEl = document.getElementById('try-result');
+    resultEl.style.display = 'block';
+    resultEl.textContent = 'Error: ' + e;
+  }}
+  
+  runBtn.disabled = false;
+  runBtn.textContent = '▶ Run Service';
+}}
+
+// Initialize on page load
+if (document.readyState === 'loading') {{
+  document.addEventListener('DOMContentLoaded', initTryButtons);
+}} else {{
+  initTryButtons();
+}}
+</script>
 </body>
 </html>"#,
         services.len(),
@@ -448,7 +593,10 @@ pub async fn services_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
                 <p>{}</p>
                 <div class="price">${}.{}</div>
                 <div class="meta">by {} &bull; {}</div>
-                <a href="http://localhost:3000/api/checkout?service_id={}&buyer_id=guest" class="btn">Buy Now</a>
+                <div class="buy-row">
+                  <a href="http://localhost:3000/api/checkout?service_id={}&buyer_id=anonymous" class="btn">Buy with Stripe</a>
+                  <button class="btn btn-try" id="try-btn-{}">▶ Try</button>
+                </div>
             </div>"#,
             service_icon(&s.service_type),
             html_escape(&s.name),
@@ -457,6 +605,7 @@ pub async fn services_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
             format_cents(s.price_cents % 100),
             html_escape(&s.agent_id[..8.min(s.agent_id.len())]),
             html_escape(&s.service_type),
+            s.id,
             s.id
         )
     }).collect::<String>();
@@ -618,6 +767,138 @@ pub async fn transactions_page(State(pool): State<Arc<SqlitePool>>) -> Html<Stri
     )))
 }
 
+pub async fn my_purchases_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
+    let transactions = match Transaction::list(&pool).await {
+        Ok(t) => t,
+        Err(_) => vec![],
+    };
+
+    let tx_html = transactions.iter().map(|t| {
+        let status_class = match t.status.as_str() {
+            "released" => "released",
+            "escrow" => "escrow",
+            "pending" => "pending",
+            _ => "pending",
+        };
+        let action_btn = if t.status == "escrow" || t.status == "released" {
+            format!(r#"<a href="/deliverable/{}" class="btn btn-sm">View Deliverable</a>"#, t.id)
+        } else {
+            r#"<span style="color:var(--muted);font-size:0.8rem;">Waiting for payment...</span>"#.to_string()
+        };
+        format!(
+            r#"
+            <div class="card {}">
+                <div class="tx-row">
+                    <span class="tx-id">{}</span>
+                    <span class="tx-status {}">{}</span>
+                    <span class="tx-amount">${}.{}</span>
+                </div>
+                <div class="meta">Service: {} &bull; Buyer: {} &bull; Seller: {}</div>
+                <div style="margin-top:0.8rem;">{}</div>
+            </div>"#,
+            status_class,
+            t.id[..8.min(t.id.len())].to_string(),
+            status_class,
+            t.status,
+            t.amount_cents / 100,
+            format_cents(t.amount_cents % 100),
+            t.service_id[..8.min(t.service_id.len())].to_string(),
+            t.buyer_id[..8.min(t.buyer_id.len())].to_string(),
+            t.seller_id[..8.min(t.seller_id.len())].to_string(),
+            action_btn
+        )
+    }).collect::<String>();
+
+    let purchases_html = if tx_html.is_empty() {
+        r#"<div class="card" style="text-align:center;padding:2rem;"><p style="color:var(--muted);">No purchases yet. Go to <a href="/services" style="color:var(--accent);">Services</a> and buy something!</p></div>"#.to_string()
+    } else {
+        tx_html
+    };
+
+    Html(wrap_page("My Purchases", &format!(
+        r#"
+        <div class="section"><h2>📦 My Purchases</h2><div class="grid">{}</div></div>"#,
+        purchases_html
+    )))
+}
+
+pub async fn deliverable_page(
+    State(pool): State<Arc<SqlitePool>>,
+    Path(id): Path<String>,
+) -> Html<String> {
+    let tx = match Transaction::get_by_id(&pool, &id).await {
+        Ok(Some(t)) => t,
+        _ => {
+            return Html(wrap_page("Not Found", r#"<div class="section"><h2>Transaction not found</h2></div>"#));
+        }
+    };
+
+    let deliverable = match Deliverable::get_by_transaction(&pool, &id).await {
+        Ok(Some(d)) => d,
+        _ => {
+            return Html(wrap_page("Not Ready", &format!(
+                r#"<div class="section"><h2>⏳ Delivery in Progress</h2><p style="color:var(--muted);">Transaction {} is still being processed. Check back soon.</p></div>"#,
+                html_escape(&id[..8.min(id.len())])
+            )));
+        }
+    };
+
+    let service = match Service::get_by_id(&pool, &tx.service_id).await {
+        Ok(Some(s)) => s,
+        _ => {
+            return Html(wrap_page("Error", r#"<div class="section"><h2>Service not found</h2></div>"#));
+        }
+    };
+
+    let output_html = deliverable.output_data.as_ref().map(|output| {
+        let escaped = html_escape(output);
+        // Convert newlines to <br> for display, but preserve code blocks
+        let formatted = escaped.replace("\n\n", "</p><p>").replace("\n", "<br>");
+        format!(
+            r#"<div class="deliverable-output"><h3>📄 Completed Work</h3><p>{}</p></div>"#,
+            formatted
+        )
+    }).unwrap_or_else(|| {
+        r#"<div class="deliverable-output"><p style="color:var(--muted);">No output generated yet.</p></div>"#.to_string()
+    });
+
+    let review_btn = if tx.status == "released" {
+        format!(
+            r#"<div style="margin-top:1.5rem;"><a href="/transactions" class="btn">Back to Transactions</a></div>"#
+        )
+    } else {
+        r#"<div style="margin-top:1.5rem;"><span style="color:var(--muted);">Escrow not yet released. <a href="/transactions" style="color:var(--accent);">View transactions</a></span></div>"#.to_string()
+    };
+
+    Html(wrap_page("Deliverable", &format!(
+        r#"
+        <div class="section">
+            <h2>✅ {}</h2>
+            <div class="card">
+                <div class="meta" style="margin-bottom:1rem;">
+                    Transaction: {} &bull; Status: <span class="tx-status {}">{}</span> &bull; Amount: ${}.{}
+                </div>
+                <div class="meta" style="margin-bottom:1rem;">
+                    Service Type: {} &bull; Seller: {} &bull; Delivered: {}
+                </div>
+                {}
+                {}
+            </div>
+        </div>"#,
+        html_escape(&service.name),
+        html_escape(&tx.id[..8.min(tx.id.len())]),
+        tx.status,
+        tx.status,
+        tx.amount_cents / 100,
+        format_cents(tx.amount_cents % 100),
+        html_escape(&service.service_type),
+        html_escape(&tx.seller_id[..8.min(tx.seller_id.len())]),
+        time_since(&deliverable.updated_at),
+        output_html,
+        review_btn
+    )))
+}
+
 pub async fn success_page(Query(query): Query<TxQuery>) -> Html<String> {
     let tx_id = query.tx_id.unwrap_or_else(|| "unknown".to_string());
     Html(wrap_page("Success", &format!(
@@ -655,7 +936,7 @@ fn wrap_page(title: &str, content: &str) -> String {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{} — ClawTrade</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦞</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🦞%3C/text%3E%3C/svg%3E?v=2">
 <style>
 :root {{
   --bg: #0a0014;
@@ -821,7 +1102,31 @@ nav a:hover {{ color: var(--accent); text-shadow: 0 0 8px rgba(0,240,255,0.4); }
 }}
 .tx-status.paid {{ color: var(--success); border: 1px solid var(--success); }}
 .tx-status.pending {{ color: var(--accent-3); border: 1px solid var(--accent-3); }}
+.tx-status.escrow {{ color: var(--accent); border: 1px solid var(--accent); }}
+.tx-status.released {{ color: var(--accent-3); border: 1px solid var(--accent-3); }}
 .tx-amount {{ color: var(--accent-3); font-weight: bold; font-family: var(--mono); }}
+.deliverable-output {{
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+}}
+.deliverable-output h3 {{
+  color: var(--accent);
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}}
+.deliverable-output p {{
+  color: var(--text);
+  line-height: 1.8;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}}
+.btn-sm {{
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+}}
 footer {{
   text-align: center;
   padding: 2rem;
@@ -838,18 +1143,136 @@ footer {{
 </head>
 <body>
 <header>
-  <h1>🎹🦞 ClawTrade</h1>
+  <h1>🦞 ClawTrade</h1>
   <nav>
     <a href="/">Home</a>
     <a href="/services">Services</a>
     <a href="/agents">Agents</a>
     <a href="/transactions">Transactions</a>
+    <a href="/my-purchases">My Purchases</a>
   </nav>
 </header>
 <div class="container">
   {}
 </div>
 <footer>ClawTrade — AI Agent Marketplace &bull; This is the wave. &bull; <a href="https://github.com/synthalorian/clawtrade" style="color:var(--muted)">GitHub</a></footer>
+<script>
+// Account state management
+function getAccount() {{
+  try {{ return JSON.parse(localStorage.getItem('clawAccount')); }} catch(e) {{ return null; }}
+}}
+function isLinked() {{ return !!getAccount(); }}
+function getTries() {{
+  try {{ return JSON.parse(localStorage.getItem('clawTries') || String.fromCharCode(123,125)); }} catch(e) {{ return {{}}; }}
+}}
+function hasTried(serviceId) {{
+  return !!getTries()[serviceId];
+}}
+function recordTry(serviceId) {{
+  const tries = getTries();
+  tries[serviceId] = true;
+  localStorage.setItem('clawTries', JSON.stringify(tries));
+}}
+
+function initTryButtons() {{
+  document.querySelectorAll('.btn-try').forEach(btn => {{
+    const id = btn.id.replace('try-btn-', '');
+    if (!id) return;
+    
+    if (isLinked()) {{
+      // Linked users: no try button, upgrade to buy
+      btn.style.display = 'none';
+      return;
+    }}
+    
+    if (hasTried(id)) {{
+      btn.textContent = '🔗 Link Account';
+      btn.style.background = 'var(--surface-2)';
+      btn.style.border = '1px solid var(--accent)';
+      btn.onclick = function() {{ showLinkAccountModal(); }};
+    }} else {{
+      btn.onclick = function() {{ tryService(id); }};
+    }}
+  }});
+}}
+
+function showLinkAccountModal() {{
+  const modal = document.createElement('div');
+  modal.id = 'link-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:2rem;';
+  modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--accent-2);border-radius:12px;max-width:500px;width:100%;padding:2rem;text-align:center;"><h3 style="color:var(--accent-2);margin-bottom:1rem;">🔗 Account Required</h3><p style="color:var(--muted);margin-bottom:1.5rem;line-height:1.6;">You\'ve used your free try! To continue using ClawTrade services, create a free account or sign in.</p><div style="display:flex;flex-direction:column;gap:0.75rem;"><button onclick="createAccount()" class="btn" style="width:100%;">Create Free Account</button><button onclick="document.getElementById(\'link-modal\').remove()" style="background:var(--surface-2);color:var(--text);padding:0.6rem 1.5rem;border-radius:6px;border:1px solid var(--border);cursor:pointer;width:100%;">Maybe Later</button></div><p style="color:var(--muted);font-size:0.8rem;margin-top:1rem;">Already have an account? You\'re signed in on this device.</p></div>';
+  document.body.appendChild(modal);
+}}
+
+function createAccount() {{
+  const id = 'user_' + Math.random().toString(36).slice(2, 10);
+  const account = {{ id: id, name: 'User ' + id.slice(-4), created: Date.now() }};
+  localStorage.setItem('clawAccount', JSON.stringify(account));
+  document.getElementById('link-modal')?.remove();
+  alert('Account created! You can now purchase services with Stripe.');
+  location.reload();
+}}
+
+function tryService(serviceId) {{
+  if (isLinked()) {{
+    alert('Please purchase this service to use it.');
+    return;
+  }}
+  if (hasTried(serviceId)) {{
+    showLinkAccountModal();
+    return;
+  }}
+  
+  const modal = document.createElement('div');
+  modal.id = 'try-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:2rem;';
+  modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--accent);border-radius:12px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:2rem;"><h3 style="color:var(--accent);margin-bottom:1rem;">🚀 Try Service (1 Free)</h3><p style="color:var(--muted);margin-bottom:1rem;font-size:0.9rem;">Enter your text below and click Run to see the LLM-generated result. <strong style="color:var(--accent-3);">One free try per service.</strong></p><textarea id="try-input" style="width:100%;min-height:120px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1rem;color:var(--text);font-family:var(--mono);font-size:0.9rem;resize:vertical;" placeholder="Enter text to process..."></textarea><div style="margin-top:1rem;display:flex;gap:0.5rem;justify-content:flex-end;"><button onclick="document.getElementById(String.fromCharCode(116,114,121,45,109,111,100,97,108)).remove()" style="background:var(--surface-2);color:var(--text);padding:0.6rem 1.5rem;border-radius:6px;border:1px solid var(--border);cursor:pointer;">Cancel</button><button id="try-run-btn" class="btn">▶ Run Service</button></div><div id="try-loading" style="display:none;text-align:center;padding:2rem;color:var(--muted);"><div style="font-size:2rem;margin-bottom:1rem;">⚡</div><div>Processing with local LLM...</div><div style="font-size:0.8rem;margin-top:0.5rem;">This may take 3-5 seconds</div></div><pre id="try-result" style="display:none;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:0.85rem;line-height:1.6;color:var(--text);max-height:400px;margin-top:1rem;"></pre></div>';
+  document.body.appendChild(modal);
+  document.getElementById('try-run-btn').addEventListener('click', function() {{ runTryService(serviceId); }});
+}}
+
+async function runTryService(serviceId) {{
+  const userInput = document.getElementById('try-input').value;
+  const runBtn = document.getElementById('try-run-btn');
+  runBtn.disabled = true;
+  runBtn.textContent = 'Running...';
+  document.getElementById('try-loading').style.display = 'block';
+  document.getElementById('try-result').style.display = 'none';
+  
+  try {{
+    const resp = await fetch('http://localhost:3000/api/services/' + serviceId + '/execute', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{user_input: userInput || 'Sample text for processing'}})
+    }});
+    const data = await resp.json();
+    document.getElementById('try-loading').style.display = 'none';
+    const resultEl = document.getElementById('try-result');
+    resultEl.style.display = 'block';
+    if (data.result) {{
+      resultEl.textContent = data.result;
+      recordTry(serviceId);
+    }} else {{
+      resultEl.textContent = 'Error: ' + (data.error || 'Unknown error');
+    }}
+  }} catch (e) {{
+    document.getElementById('try-loading').style.display = 'none';
+    const resultEl = document.getElementById('try-result');
+    resultEl.style.display = 'block';
+    resultEl.textContent = 'Error: ' + e;
+  }}
+  
+  runBtn.disabled = false;
+  runBtn.textContent = '▶ Run Service';
+}}
+
+// Initialize on page load
+if (document.readyState === 'loading') {{
+  document.addEventListener('DOMContentLoaded', initTryButtons);
+}} else {{
+  initTryButtons();
+}}
+</script>
 </body>
 </html>"#,
         title, content
@@ -868,6 +1291,9 @@ fn service_icon(service_type: &str) -> &'static str {
         "text_processing" => "📝",
         "data_formatting" => "📊",
         "api_monitor" => "📡",
+        "code_review" => "💻",
+        "creative_writing" => "✨",
+        "analysis" => "🔍",
         _ => "🔧",
     }
 }

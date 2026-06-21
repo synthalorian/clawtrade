@@ -67,6 +67,16 @@ impl Transaction {
         Ok(txs)
     }
 
+    pub async fn list_by_buyer(pool: &SqlitePool, buyer_id: &str) -> Result<Vec<Self>> {
+        let txs = sqlx::query_as::<_, Transaction>(
+            "SELECT * FROM transactions WHERE buyer_id = ? ORDER BY created_at DESC",
+        )
+        .bind(buyer_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(txs)
+    }
+
     pub async fn get_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>> {
         let tx = sqlx::query_as::<_, Transaction>("SELECT * FROM transactions WHERE id = ?")
             .bind(id)

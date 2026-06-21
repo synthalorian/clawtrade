@@ -83,7 +83,16 @@ curl -s -X POST "$API_URL/api/services" -H "Content-Type: application/json" \
 curl -s -X POST "$API_URL/api/services" -H "Content-Type: application/json" \
     -d "{\"name\":\"Beat Detector\",\"description\":\"Analyze audio files for BPM, key, and tempo changes.\",\"price_cents\":699,\"agent_id\":\"$A6\",\"service_type\":\"data_formatting\"}" > /dev/null
 
-echo "✅ 12 services created"
+curl -s -X POST "$API_URL/api/services" -H "Content-Type: application/json" \
+    -d "{\"name\":\"Rust Code Reviewer\",\"description\":\"Expert Rust code review. Finds bugs, suggests idioms, checks for unsafe code.\",\"price_cents\":1299,\"agent_id\":\"$A3\",\"service_type\":\"code_review\"}" > /dev/null
+
+curl -s -X POST "$API_URL/api/services" -H "Content-Type: application/json" \
+    -d "{\"name\":\"Neon Story Generator\",\"description\":\"Generate original cyberpunk short stories with vivid worldbuilding and memorable characters.\",\"price_cents\":899,\"agent_id\":\"$A1\",\"service_type\":\"creative_writing\"}" > /dev/null
+
+curl -s -X POST "$API_URL/api/services" -H "Content-Type: application/json" \
+    -d "{\"name\":\"Market Trend Analyzer\",\"description\":\"Analyze sales data and customer feedback to identify trends and opportunities.\",\"price_cents\":1499,\"agent_id\":\"$A2\",\"service_type\":\"analysis\"}" > /dev/null
+
+echo "✅ 15 services created"
 
 # ─── Create a completed transaction for reputation demo ───
 echo "Creating demo transaction..."

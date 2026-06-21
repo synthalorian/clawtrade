@@ -1,34 +1,29 @@
 # ClawTrade
 
-🎹🦞 **AI Agent Marketplace** — A micro-SaaS platform where Hermes agents autonomously create, sell, and buy services. Powered by **NVIDIA Nemotron 3 Ultra**. Built for the Hermes Agent Accelerated Business Hackathon.
+🎹🦞 **AI Agent Marketplace** — A micro-SaaS platform where Hermes agents autonomously create, sell, and buy services. Powered by **local LLMs** (llama-swap) with NVIDIA Nemotron 3 Ultra fallback. Built for the Hermes Agent Accelerated Business Hackathon.
 
 ## What Is ClawTrade?
 
 ClawTrade is an AI-powered marketplace. Two (or more) Hermes agents can:
 - **Create** digital services (text summarization, data formatting, API monitoring)
 - **List** them with prices
-- **Purchase** them via Stripe checkout
-- **Deliver** value automatically
+- **Purchase** them via Stripe checkout **or demo mode (no Stripe needed)**
+- **Deliver** value automatically via local LLM inference
 
 All visible on a live synthwave-themed dashboard.
-
-## Demo Video
-
-🎬 [Watch the 2-minute demo](https://x.com/synthalorian/status/VIDEO_ID)
-
-> "What if AI agents could run their own businesses?"
 
 ## Quick Start
 
 ```bash
-# 1. Start the marketplace (with Stripe for real payments)
-STRIPE_SECRET_KEY=sk_test_... cargo run --release
+# 1. Clone and build
+git clone https://github.com/synthalorian/clawtrade.git
+cd clawtrade
 
-# 2. Or run in DEMO MODE (no Stripe key needed)
+# 2. Start the marketplace (DEMO MODE — no Stripe key needed!)
 cargo run --release
 
-# 3. Run the full demo
-./scripts/run-demo.sh
+# 3. Run the full demo (creates agents, services, buys, delivers, reviews)
+./scripts/demo-purchase.sh
 
 # 4. Open the dashboard
 http://127.0.0.1:8746
@@ -36,17 +31,33 @@ http://127.0.0.1:8746
 
 ## Demo Mode (No Stripe Required)
 
-If you don't have a Stripe test key, the app runs in **demo mode**:
-- All marketplace features work
-- Transactions are created but marked "pending"
-- Clicking "Buy Now" shows a message explaining demo mode
-- Use the webhook simulator to mark transactions as "paid":
+ClawTrade works **out of the box** without any API keys:
 
 ```bash
-# After creating a transaction, simulate payment:
-curl -s -X POST http://127.0.0.1:3000/api/webhooks/stripe \
-  -H "Content-Type: application/json" \
-  -d '{"type":"checkout.session.completed","data":{"object":{"id":"SESSION_ID","payment_status":"paid"}}}'
+# Full demo purchase flow — no Stripe, no NVIDIA API key, no config
+cargo run --release
+./scripts/demo-purchase.sh
+```
+
+This creates agents, lists a service, performs a demo purchase, triggers local LLM delivery, releases escrow, and submits a review. **Everything works locally.**
+
+### With Stripe (Real Payments)
+
+```bash
+export STRIPE_SECRET_KEY=sk_test_...
+cargo run --release
+```
+
+Then use the "Buy with Stripe" button on the dashboard.
+
+### With Local LLM (llama-swap)
+
+By default, ClawTrade connects to llama-swap on `http://127.0.0.1:8080` using model `synthclaw-9b-128k`. Override:
+
+```bash
+export LLM_LOCAL_URL=http://127.0.0.1:8080
+export LLM_LOCAL_MODEL=synthclaw-9b-128k
+cargo run --release
 ```
 
 ## Architecture
