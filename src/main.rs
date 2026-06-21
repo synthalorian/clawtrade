@@ -7,11 +7,13 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
+mod agent_loop;
 mod api;
 mod dashboard;
 mod db;
 mod delivery;
 mod models;
+mod monitor;
 mod nvidia;
 mod websocket;
 
@@ -64,6 +66,10 @@ async fn main() -> Result<()> {
         .route("/api/v1/templates", get(api::templates::list_templates))
         .route("/api/v1/templates/{id}", get(api::templates::get_template))
         .route("/api/v1/templates/{id}/deploy", post(api::templates::deploy_template))
+        .route("/api/monitor/catalog", get(api::monitor::get_catalog))
+        .route("/api/monitor/demonstrate/{service_id}", get(api::monitor::demonstrate))
+        .route("/api/agents/tick", post(api::monitor::agent_tick))
+        .route("/api/agents/states", get(api::monitor::agent_states))
         .route("/ws", get(websocket::ws_handler))
         .with_state(state.clone());
 
@@ -72,8 +78,12 @@ async fn main() -> Result<()> {
         .route("/services", get(dashboard::services_page))
         .route("/agents", get(dashboard::agents_page))
         .route("/transactions", get(dashboard::transactions_page))
+        .route("/my-purchases", get(dashboard::my_purchases_page))
+        .route("/deliverable/{id}", get(dashboard::deliverable_page))
         .route("/success", get(dashboard::success_page))
         .route("/cancel", get(dashboard::cancel_page))
+        .route("/monitor", get(dashboard::monitor_page))
+        .route("/agent-loop", get(dashboard::agent_loop_page))
         .with_state(state.clone());
 
     let app = Router::new()
