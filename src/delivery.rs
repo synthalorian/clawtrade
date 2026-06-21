@@ -98,7 +98,7 @@ pub async fn execute_service_direct(
 
 // ─── TEXT PROCESSING ───
 
-async fn deliver_text_processing(service: &Service, tx: &Transaction) -> Result<String> {
+async fn deliver_text_processing(service: &Service, _tx: &Transaction) -> Result<String> {
     let client = LlmClient::new();
     
     // Generate sample content based on service name
