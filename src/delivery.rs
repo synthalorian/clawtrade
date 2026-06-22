@@ -59,6 +59,21 @@ pub async fn trigger_delivery(pool: &SqlitePool, transaction_id: &str) -> Result
     match result {
         Ok(output) => {
             Deliverable::update_output(pool, &deliverable.id, &output).await?;
+            // Auto-release escrow after successful delivery
+            let _ = Transaction::release_escrow(pool, transaction_id).await;
+            // Log the delivery + escrow release
+            let _ = crate::models::activity_log::ActivityLog::create(
+                pool,
+                &tx.buyer_id,
+                "System",
+                "escrow_release",
+                Some(transaction_id),
+                Some("transaction"),
+                Some(&service.name),
+                Some(tx.amount_cents),
+                "completed",
+                Some(&format!("Auto-released escrow for {} after delivery", service.name)),
+            ).await;
             Ok(())
         }
         Err(e) => {
