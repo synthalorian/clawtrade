@@ -221,6 +221,13 @@ impl AgentLoop {
                     )),
                 ).await;
 
+                // Broadcast WebSocket event
+                crate::websocket::broadcast_event(crate::websocket::DashboardEvent::PurchaseInitiated {
+                    tx_id: tx.id.clone(),
+                    service_name: service.name.clone(),
+                    buyer_id: agent.id.clone(),
+                });
+
                 Ok(Some(InteractionResult {
                     interaction_type: "purchase".to_string(),
                     agent_id: agent.id.clone(),
@@ -299,6 +306,13 @@ impl AgentLoop {
             "completed",
             Some(&format!("Created {} (${:.2})", name, price as f64 / 100.0)),
         ).await;
+
+        // Broadcast WebSocket event
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::ServiceCreated {
+            service_id: service.id.clone(),
+            name: name.to_string(),
+            agent_name: agent.name.clone(),
+        });
 
         Ok(Some(InteractionResult {
             interaction_type: "create_service".to_string(),

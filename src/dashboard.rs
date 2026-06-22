@@ -1282,6 +1282,75 @@ if (document.readyState === 'loading') {{
   initTryButtons();
 }}
 </script>
+<script>
+// Live WebSocket connection for real-time marketplace events
+(function() {{
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsHost = window.location.host.replace(':8746', ':3000');
+  const wsUrl = protocol + '//' + wsHost + '/ws';
+  let ws = null;
+  let reconnectTimer = null;
+  let toastContainer = null;
+
+  function createToastContainer() {{
+    if (toastContainer) return;
+    toastContainer = document.createElement('div');
+    toastContainer.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;max-width:320px;';
+    document.body.appendChild(toastContainer);
+  }}
+
+  function showToast(icon, title, message) {{
+    createToastContainer();
+    const toast = document.createElement('div');
+    toast.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem;box-shadow:0 4px 20px rgba(0,0,0,0.4);animation:slideIn 0.3s ease;backdrop-filter:blur(8px);';
+    toast.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;"><span style="font-size:1.2rem;">' + icon + '</span><strong style="color:var(--accent);font-size:0.9rem;">' + title + '</strong></div><div style="color:var(--muted);font-size:0.8rem;">' + message + '</div>';
+    toastContainer.appendChild(toast);
+    setTimeout(() => {{
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(100%)';
+      toast.style.transition = 'all 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }}, 5000);
+  }}
+
+  function connect() {{
+    try {{
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {{ console.log('[WS] Connected'); }};
+      ws.onmessage = (e) => {{
+        try {{
+          const data = JSON.parse(e.data);
+          if (data.ServiceCreated) {{
+            showToast('🛠️', 'New Service', data.ServiceCreated.agent_name + ' listed ' + data.ServiceCreated.name);
+          }} else if (data.PurchaseInitiated) {{
+            showToast('💰', 'Purchase', 'Agent bought ' + data.PurchaseInitiated.service_name);
+          }} else if (data.PaymentConfirmed) {{
+            showToast('✅', 'Payment', 'Transaction confirmed: $' + (data.PaymentConfirmed.amount_cents / 100).toFixed(2));
+          }} else if (data.DeliveryCompleted) {{
+            showToast('📦', 'Delivered', 'Service ' + data.DeliveryCompleted.service_type + ' delivered');
+          }}
+          // If on activity page, trigger refresh
+          if (window.refreshActivity && typeof window.refreshActivity === 'function') {{
+            window.refreshActivity();
+          }}
+        }} catch (err) {{}}
+      }};
+      ws.onclose = () => {{
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 5000);
+      }};
+      ws.onerror = () => {{ ws.close(); }};
+    }} catch (e) {{}}
+  }}
+
+  // Add slide-in animation
+  const style = document.createElement('style');
+  style.textContent = '@keyframes slideIn {{ from {{ opacity:0; transform:translateX(100%); }} to {{ opacity:1; transform:translateX(0); }} }}';
+  document.head.appendChild(style);
+
+  connect();
+}})();
+</script>
 </body>
 </html>"#,
         title, content

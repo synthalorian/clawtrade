@@ -114,9 +114,30 @@ async fn main() -> Result<()> {
         axum::serve(dashboard_listener, dashboard_app).await
     });
 
+    // Auto-tick: agents trade autonomously every 30 seconds
+    let tick_pool = state.clone();
+    let tick_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let loop_engine = crate::agent_loop::AgentLoop::new(tick_pool.clone());
+            match loop_engine.tick().await {
+                Ok(results) => {
+                    if !results.is_empty() {
+                        let summary: Vec<String> = results.iter().map(|r| format!("{}: {}", r.interaction_type, r.message)).collect();
+                        eprintln!("[autotick] {} actions: {}", results.len(), summary.join(" | "));
+                    }
+                }
+                Err(e) => eprintln!("[autotick] error: {}", e),
+            }
+        }
+    });
+
     tokio::select! {
         r = api_handle => r??,
         r = dashboard_handle => r??,
+        _ = tick_handle => {},
     }
 
     Ok(())
