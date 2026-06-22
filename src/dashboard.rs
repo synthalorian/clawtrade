@@ -30,6 +30,7 @@ pub fn dashboard_router(state: Arc<SqlitePool>) -> Router {
         .route("/cancel", get(cancel_page))
         .route("/monitor", get(monitor_page))
         .route("/agent-loop", get(agent_loop_page))
+        .route("/activity", get(activity_page))
         .with_state(state)
 }
 
@@ -1537,4 +1538,243 @@ fn time_since(dt: &chrono::DateTime<chrono::Utc>) -> String {
     } else {
         format!("{}d ago", diff.num_days())
     }
+}
+
+
+pub async fn activity_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
+    let logs = match crate::models::activity_log::ActivityLog::list_global(&pool, 100).await {
+        Ok(l) => l,
+        Err(_) => vec![],
+    };
+
+    let stats = match crate::models::activity_log::ActivityLog::get_stats(&pool).await {
+        Ok(s) => s,
+        Err(_) => crate::models::activity_log::ActivityStats {
+            total_actions: 0,
+            total_purchases: 0,
+            total_reviews: 0,
+            total_services_created: 0,
+            total_volume_cents: 0,
+            top_agent: None,
+        },
+    };
+
+    let agents = match Agent::list(&pool).await {
+        Ok(a) => a,
+        Err(_) => vec![],
+    };
+
+    let log_rows = logs.iter().map(|l| {
+        let action_icon = match l.action_type.as_str() {
+            "purchase" => "💰",
+            "create_service" => "🛠️",
+            "review" => "⭐",
+            "browse" => "👀",
+            _ => "📝",
+        };
+        let action_class = match l.action_type.as_str() {
+            "purchase" => "action-purchase",
+            "create_service" => "action-create",
+            "review" => "action-review",
+            _ => "action-other",
+        };
+        let amount_html = l.amount_cents.map(|c| format!(
+            r#"<span class="amount">${}.{}</span>"#,
+            c / 100, format_cents(c % 100)
+        )).unwrap_or_default();
+
+        let target_link = l.target_id.as_ref().map(|id| {
+            if l.target_type.as_deref() == Some("transaction") {
+                format!(r#"<a href="/deliverable/{}">{}</a>"#, id, html_escape(&l.target_name.as_deref().unwrap_or(id)))
+            } else {
+                format!(r#"<a href="/activity?agent={}">{}</a>"#, id, html_escape(&l.target_name.as_deref().unwrap_or(id)))
+            }
+        }).unwrap_or_default();
+
+        format!(
+            r#"
+            <tr class="{}" data-agent="{}" data-type="{}">
+                <td class="log-icon">{}</td>
+                <td class="log-time">{}</td>
+                <td class="log-agent"><a href="/activity?agent={}">{}</a></td>
+                <td class="log-action">{}</td>
+                <td class="log-target">{}</td>
+                <td class="log-amount">{}</td>
+                <td class="log-details">{}</td>
+            </tr>"#,
+            action_class,
+            html_escape(&l.agent_id),
+            l.action_type,
+            action_icon,
+            time_since(&l.created_at),
+            html_escape(&l.agent_id),
+            html_escape(&l.agent_name),
+            l.action_type.replace('_', " "),
+            target_link,
+            amount_html,
+            l.details.as_deref().map(html_escape).unwrap_or_default()
+        )
+    }).collect::<String>();
+
+    let agent_options = agents.iter().map(|a| {
+        format!(r#"<option value="{}">{}</option>"#, html_escape(&a.id), html_escape(&a.name))
+    }).collect::<String>();
+
+    let stats_html = format!(
+        r#"
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Total Actions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Purchases</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Reviews</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Services Created</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${}.{}</div>
+                <div class="stat-label">Total Volume</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Top Agent</div>
+            </div>
+        </div>"#,
+        stats.total_actions,
+        stats.total_purchases,
+        stats.total_reviews,
+        stats.total_services_created,
+        stats.total_volume_cents / 100, format_cents(stats.total_volume_cents % 100),
+        stats.top_agent.as_ref().map(|(name, count)| format!("{} ({})", name, count)).unwrap_or_else(|| "—".to_string())
+    );
+
+    Html(wrap_page("Activity Ledger", &format!(
+        r#"
+        <div class="section">
+            <h2>📜 Activity Ledger — Global Marketplace Feed</h2>
+            <p style="color:var(--muted);margin-bottom:1.5rem;">
+                Every action, every trade, every service creation — recorded in real-time. Think Etherscan for agents.
+            </p>
+            {}
+        </div>
+
+        <div class="section">
+            <div class="filter-bar">
+                <select id="agent-filter" onchange="filterByAgent()">
+                    <option value="">All Agents</option>
+                    {}
+                </select>
+                <select id="type-filter" onchange="filterByType()">
+                    <option value="">All Actions</option>
+                    <option value="purchase">Purchases</option>
+                    <option value="create_service">Service Creation</option>
+                    <option value="review">Reviews</option>
+                    <option value="browse">Browses</option>
+                </select>
+                <button class="btn btn-secondary" onclick="refreshActivity()">↻ Refresh</button>
+            </div>
+            <table class="data-table activity-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Time</th>
+                        <th>Agent</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Amount</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="activity-body">
+                    {}
+                </tbody>
+            </table>
+            <div id="empty-state" class="empty-state" style="display:none;">
+                <p>No activities match your filters.</p>
+            </div>
+        </div>
+
+        <script>
+        function filterByAgent() {{
+            const agent = document.getElementById('agent-filter').value;
+            const rows = document.querySelectorAll('#activity-body tr');
+            let visible = 0;
+            for (const row of rows) {{
+                if (!agent || row.dataset.agent === agent) {{
+                    row.style.display = '';
+                    visible++;
+                }} else {{
+                    row.style.display = 'none';
+                }}
+            }}
+            document.getElementById('empty-state').style.display = visible ? 'none' : 'block';
+        }}
+        function filterByType() {{
+            const type = document.getElementById('type-filter').value;
+            const rows = document.querySelectorAll('#activity-body tr');
+            let visible = 0;
+            for (const row of rows) {{
+                if (!type || row.dataset.type === type) {{
+                    row.style.display = '';
+                    visible++;
+                }} else {{
+                    row.style.display = 'none';
+                }}
+            }}
+            document.getElementById('empty-state').style.display = visible ? 'none' : 'block';
+        }}
+        async function refreshActivity() {{
+            const btn = document.querySelector('.filter-bar .btn');
+            btn.textContent = 'Loading...';
+            try {{
+                const resp = await fetch('/api/activity');
+                const data = await resp.json();
+                window.location.reload();
+            }} catch (e) {{
+                btn.textContent = 'Error';
+            }}
+        }}
+        // Apply URL filter on load
+        const params = new URLSearchParams(window.location.search);
+        const agentFilter = params.get('agent');
+        if (agentFilter) {{
+            document.getElementById('agent-filter').value = agentFilter;
+            filterByAgent();
+        }}
+        </script>
+        <style>
+        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
+        .stat-card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; text-align: center; }}
+        .stat-value {{ font-size: 1.5rem; font-weight: bold; color: var(--accent); margin-bottom: 0.25rem; }}
+        .stat-label {{ font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }}
+        .filter-bar {{ display: flex; gap: 1rem; margin-bottom: 1.5rem; align-items: center; flex-wrap: wrap; }}
+        .filter-bar select {{ background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; }}
+        .activity-table {{ width: 100%; border-collapse: collapse; }}
+        .activity-table th {{ text-align: left; padding: 0.75rem; color: var(--accent); border-bottom: 1px solid var(--border); font-size: 0.8rem; text-transform: uppercase; }}
+        .activity-table td {{ padding: 0.75rem; border-bottom: 1px solid var(--border); color: var(--text); font-size: 0.9rem; }}
+        .log-icon {{ font-size: 1.2rem; width: 40px; text-align: center; }}
+        .log-time {{ color: var(--muted); font-size: 0.8rem; white-space: nowrap; }}
+        .log-agent a {{ color: var(--accent); text-decoration: none; }}
+        .log-agent a:hover {{ text-decoration: underline; }}
+        .log-action {{ text-transform: capitalize; font-weight: 500; }}
+        .log-target a {{ color: var(--accent-3); text-decoration: none; }}
+        .log-target a:hover {{ text-decoration: underline; }}
+        .log-amount {{ color: var(--success); font-weight: 500; text-align: right; }}
+        .log-details {{ color: var(--muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }}
+        .action-purchase {{ border-left: 3px solid var(--success); }}
+        .action-create {{ border-left: 3px solid var(--accent); }}
+        .action-review {{ border-left: 3px solid var(--accent-3); }}
+        .action-other {{ border-left: 3px solid var(--border); }}
+        .empty-state {{ text-align: center; padding: 3rem; color: var(--muted); }}
+        </style>"#,
+        stats_html, agent_options, log_rows
+    )))
 }

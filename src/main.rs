@@ -70,8 +70,12 @@ async fn main() -> Result<()> {
         .route("/api/monitor/demonstrate/{service_id}", get(api::monitor::demonstrate))
         .route("/api/agents/tick", post(api::monitor::agent_tick))
         .route("/api/agents/states", get(api::monitor::agent_states))
-        .route("/api/agents/:id/create-service", post(api::monitor::agent_create_service))
-        .route("/api/agents/:id/review", post(api::monitor::agent_leave_review))
+        .route("/api/agents/{id}/create-service", post(api::monitor::agent_create_service))
+        .route("/api/agents/{id}/review", post(api::monitor::agent_leave_review))
+        .route("/api/activity", get(api::activity::global_activity))
+        .route("/api/activity/stats", get(api::activity::activity_stats))
+        .route("/api/activity/agent/{id}", get(api::activity::agent_activity))
+        .route("/api/activity/tx/{id}", get(api::activity::tx_activity))
         .route("/ws", get(websocket::ws_handler))
         .with_state(state.clone());
 
