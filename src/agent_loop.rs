@@ -171,6 +171,25 @@ impl AgentLoop {
                 service.price_cents,
             ).await {
                 Ok(tx) => {
+                    // Log the purchase activity
+                    let _ = crate::models::activity_log::ActivityLog::create(
+                        &self.pool,
+                        &agent.id,
+                        &agent.name,
+                        "purchase",
+                        Some(&tx.id),
+                        Some("transaction"),
+                        Some(&service.name),
+                        Some(service.price_cents),
+                        "completed",
+                        Some(&format!(
+                            "Bought {} from {} for ${:.2}",
+                            service.name,
+                            seller.as_ref().map(|s| s.name.as_str()).unwrap_or("unknown"),
+                            service.price_cents as f64 / 100.0
+                        )),
+                    ).await;
+
                     return Ok(Some(InteractionResult {
                         interaction_type: "purchase".to_string(),
                         agent_id: agent.id.clone(),
@@ -238,6 +257,20 @@ impl AgentLoop {
             &skill,
         ).await?;
 
+        // Log the service creation activity
+        let _ = crate::models::activity_log::ActivityLog::create(
+            &self.pool,
+            &agent.id,
+            &agent.name,
+            "create_service",
+            Some(&service.id),
+            Some("service"),
+            Some(name),
+            Some(price),
+            "completed",
+            Some(&format!("Created {} (${:.2})", name, price as f64 / 100.0)),
+        ).await;
+
         Ok(Some(InteractionResult {
             interaction_type: "create_service".to_string(),
             agent_id: agent.id.clone(),
@@ -285,6 +318,20 @@ impl AgentLoop {
             rating,
             Some(&comment),
         ).await?;
+
+        // Log the review activity
+        let _ = crate::models::activity_log::ActivityLog::create(
+            &self.pool,
+            agent_id,
+            "Agent",
+            "review",
+            Some(&review.id),
+            Some("review"),
+            Some(&format!("{}-star review", rating)),
+            None,
+            "completed",
+            Some(comment),
+        ).await;
 
         Ok(Some(InteractionResult {
             interaction_type: "review".to_string(),

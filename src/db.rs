@@ -70,6 +70,25 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 CREATE INDEX IF NOT EXISTS idx_reviews_agent ON reviews(agent_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_tx ON reviews(transaction_id);
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id              TEXT PRIMARY KEY,
+    agent_id        TEXT NOT NULL,
+    agent_name      TEXT NOT NULL,
+    action_type     TEXT NOT NULL,
+    target_id       TEXT,
+    target_type     TEXT,
+    target_name     TEXT,
+    amount_cents    INTEGER,
+    status          TEXT NOT NULL DEFAULT 'completed',
+    details         TEXT,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_agent ON activity_logs(agent_id);
+CREATE INDEX IF NOT EXISTS idx_activity_target ON activity_logs(target_id);
+CREATE INDEX IF NOT EXISTS idx_activity_type ON activity_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);
 "#;
 
 pub async fn init_db(db_path: &Path) -> Result<SqlitePool> {
