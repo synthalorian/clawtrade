@@ -6,13 +6,16 @@
 //! - Execute service workflows
 //! - Leave reviews and build reputation
 //! - Trade with other agents
+//!
+//! All randomness is deterministic (hash-based) to ensure Send-safety
+//! in async Axum handlers — no thread_rng across await points.
 
 use anyhow::Result;
-use rand::seq::SliceRandom;
-use rand::Rng;
 use serde::Serialize;
 use sqlx::SqlitePool;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use crate::models::agent::Agent;
@@ -33,6 +36,7 @@ pub struct AgentState {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub enum AgentMood {
     Shopping,
     Selling,
@@ -53,32 +57,47 @@ pub struct InteractionResult {
     pub details: Option<serde_json::Value>,
 }
 
-/// The agent loop engine
+/// Deterministic pseudo-random value from a string seed.
+/// Returns a value in range [0, 1) using a simple hash-based approach.
+fn det_rand(seed: &str) -> f64 {
+    let mut hasher = DefaultHasher::new();
+    seed.hash(&mut hasher);
+    let hash = hasher.finish();
+    (hash as f64) / (u64::MAX as f64 + 1.0)
+}
+
+/// Deterministic choice from a slice using a seed.
+fn det_choice<T: Clone>(items: &[T], seed: &str) -> Option<T> {
+    if items.is_empty() {
+        return None;
+    }
+    let idx = (det_rand(seed) * items.len() as f64) as usize % items.len();
+    Some(items[idx].clone())
+}
+
+/// The agent loop engine — drives autonomous marketplace activity
 pub struct AgentLoop {
     pub pool: Arc<SqlitePool>,
-    pub agent_states: HashMap<String, AgentState>,
 }
 
 impl AgentLoop {
     pub fn new(pool: Arc<SqlitePool>) -> Self {
-        Self {
-            pool,
-            agent_states: HashMap::new(),
-        }
+        Self { pool }
     }
 
     /// Initialize agent states from database
-    pub async fn init(&mut self) -> Result<()> {
+    pub async fn get_states(&self) -> Result<HashMap<String, AgentState>> {
         let agents = Agent::list(&self.pool).await?;
+        let mut states = HashMap::new();
         for agent in agents {
-            let needs = generate_agent_needs(&agent);
+            let needs = generate_agent_needs(&agent.id);
             let skills = vec![
                 "text_processing".to_string(),
                 "data_formatting".to_string(),
                 "analysis".to_string(),
             ];
 
-            self.agent_states.insert(
+            states.insert(
                 agent.id.clone(),
                 AgentState {
                     agent_id: agent.id.clone(),
@@ -92,129 +111,116 @@ impl AgentLoop {
                 },
             );
         }
-        Ok(())
+        Ok(states)
     }
 
-    /// Run one tick of the agent loop
-    pub async fn tick(&mut self) -> Result<Vec<InteractionResult>> {
+    /// Run one tick of the agent loop — each agent takes an action
+    pub async fn tick(&self) -> Result<Vec<InteractionResult>> {
         let mut results = vec![];
-        let agent_ids: Vec<String> = self.agent_states.keys().cloned().collect();
+        let agents = Agent::list(&self.pool).await?;
 
-        for agent_id in agent_ids {
-            let result = self.agent_action(&agent_id).await?;
-            if let Some(r) = result {
-                results.push(r);
+        for agent in agents {
+            if let Some(result) = self.agent_action(&agent).await? {
+                results.push(result);
             }
         }
 
         Ok(results)
     }
 
-    /// A single agent takes an action
-    async fn agent_action(&mut self, agent_id: &str) -> Result<Option<InteractionResult>> {
-        let state = match self.agent_states.get(agent_id) {
-            Some(s) => s.clone(),
-            None => return Ok(None),
-        };
-
-        let action = match state.mood {
-            AgentMood::Shopping | AgentMood::Exploring => {
-                self.agent_browse_and_buy(&state).await?
-            }
-            AgentMood::Selling => {
-                self.agent_create_service(&state).await?
-            }
-            AgentMood::Satisfied => {
-                if rand::thread_rng().r#gen::<f32>() < 0.3 {
-                    self.agent_leave_review(&state).await?
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        if let Some(ref r) = action {
-            if r.success {
-                self.update_agent_mood(agent_id, AgentMood::Satisfied);
-            }
-        }
-
-        Ok(action)
-    }
-
-    /// Agent browses services and potentially buys one
-    async fn agent_browse_and_buy(&self, state: &AgentState) -> Result<Option<InteractionResult>> {
+    /// A single agent takes an action based on its current state
+    async fn agent_action(&self, agent: &Agent) -> Result<Option<InteractionResult>> {
         let services = Service::list_active(&self.pool).await?;
         if services.is_empty() {
             return Ok(None);
         }
 
-        let affordable: Vec<&Service> = services
-            .iter()
-            .filter(|s| s.price_cents <= state.balance_cents)
-            .filter(|s| !state.recent_purchases.contains(&s.id))
-            .collect();
-
-        if affordable.is_empty() {
-            return Ok(Some(InteractionResult {
-                interaction_type: "browse".to_string(),
-                agent_id: state.agent_id.clone(),
-                target_id: None,
-                success: false,
-                message: format!("{} browsed but found nothing affordable", state.name),
-                details: None,
-            }));
-        }
-
-        let mut rng = rand::thread_rng();
-        let service = affordable.choose(&mut rng).unwrap();
-
-        let seller = Agent::get_by_id(&self.pool, &service.agent_id).await?;
-        let seller_rep = seller.as_ref().map(|s| s.reputation_score).unwrap_or(0);
-
-        if seller_rep < 10 && rand::thread_rng().r#gen::<f32>() < 0.5 {
-            return Ok(Some(InteractionResult {
-                interaction_type: "browse".to_string(),
-                agent_id: state.agent_id.clone(),
-                target_id: Some(service.agent_id.clone()),
-                success: false,
-                message: format!("{} skipped {} due to low seller reputation", state.name, service.name),
-                details: None,
-            }));
-        }
-
-        // Execute demo purchase
-        let tx = Transaction::create(
-            &self.pool,
-            &service.id,
-            &state.agent_id,
-            &service.agent_id,
-            service.price_cents,
-        ).await?;
-
-        Ok(Some(InteractionResult {
-            interaction_type: "purchase".to_string(),
-            agent_id: state.agent_id.clone(),
-            target_id: Some(service.agent_id.clone()),
-            success: true,
-            message: format!("{} bought {} from {} for ${:.2}", state.name, service.name, seller.as_ref().map(|s| s.name.as_str()).unwrap_or("unknown"), service.price_cents as f64 / 100.0),
-            details: Some(serde_json::json!({
-                "transaction_id": tx.id,
-                "service_id": service.id,
-                "price_cents": service.price_cents,
-            })),
-        }))
-    }
-
-    /// Agent creates a new service to sell
-    async fn agent_create_service(&self, state: &AgentState) -> Result<Option<InteractionResult>> {
-        if state.skills.is_empty() {
+        // Deterministic action based on agent ID
+        let should_act = agent.id.chars().next().map(|c| c as u32 % 3 == 0).unwrap_or(false);
+        if !should_act {
             return Ok(None);
         }
 
-        let mut rng = rand::thread_rng();
-        let skill = state.skills.choose(&mut rng).unwrap();
+        // Try to buy a service
+        if let Some(service) = services.first() {
+            // Check seller reputation
+            let seller = Agent::get_by_id(&self.pool, &service.agent_id).await?;
+            let seller_rep = seller.as_ref().map(|s| s.reputation_score).unwrap_or(0);
+
+            if seller_rep < 10 {
+                // Low rep seller, skip sometimes
+                let skip = agent.id.chars().nth(1).map(|c| c as u32 % 2 == 0).unwrap_or(false);
+                if skip {
+                    return Ok(Some(InteractionResult {
+                        interaction_type: "browse".to_string(),
+                        agent_id: agent.id.clone(),
+                        target_id: Some(service.agent_id.clone()),
+                        success: false,
+                        message: format!("{} skipped {} due to low seller reputation", agent.name, service.name),
+                        details: None,
+                    }));
+                }
+            }
+
+            // Create transaction (demo purchase)
+            match Transaction::create(
+                &self.pool,
+                &service.id,
+                &agent.id,
+                &service.agent_id,
+                service.price_cents,
+            ).await {
+                Ok(tx) => {
+                    return Ok(Some(InteractionResult {
+                        interaction_type: "purchase".to_string(),
+                        agent_id: agent.id.clone(),
+                        target_id: Some(service.agent_id.clone()),
+                        success: true,
+                        message: format!(
+                            "{} bought {} from {} for ${:.2}",
+                            agent.name,
+                            service.name,
+                            seller.as_ref().map(|s| s.name.as_str()).unwrap_or("unknown"),
+                            service.price_cents as f64 / 100.0
+                        ),
+                        details: Some(serde_json::json!({
+                            "transaction_id": tx.id,
+                            "service_id": service.id,
+                            "price_cents": service.price_cents,
+                        })),
+                    }));
+                }
+                Err(e) => {
+                    return Ok(Some(InteractionResult {
+                        interaction_type: "purchase_failed".to_string(),
+                        agent_id: agent.id.clone(),
+                        target_id: Some(service.agent_id.clone()),
+                        success: false,
+                        message: format!("{} failed to buy {}: {}", agent.name, service.name, e),
+                        details: None,
+                    }));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Agent creates a new service to sell
+    pub async fn agent_create_service(&self, agent_id: &str) -> Result<Option<InteractionResult>> {
+        let agent = match Agent::get_by_id(&self.pool, agent_id).await? {
+            Some(a) => a,
+            None => return Ok(None),
+        };
+
+        let skills = vec![
+            "text_processing".to_string(),
+            "data_formatting".to_string(),
+            "analysis".to_string(),
+        ];
+
+        let seed = format!("{}-create-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs());
+        let skill = det_choice(&skills, &seed).unwrap_or_else(|| "text_processing".to_string());
 
         let (name, description, price) = match skill.as_str() {
             "text_processing" => ("Auto Summarizer", "AI-powered text summarization", 499),
@@ -228,16 +234,16 @@ impl AgentLoop {
             name,
             description,
             price,
-            &state.agent_id,
-            skill,
+            &agent.id,
+            &skill,
         ).await?;
 
         Ok(Some(InteractionResult {
             interaction_type: "create_service".to_string(),
-            agent_id: state.agent_id.clone(),
+            agent_id: agent.id.clone(),
             target_id: None,
             success: true,
-            message: format!("{} created a new service: {} (${:.2})", state.name, name, price as f64 / 100.0),
+            message: format!("{} created a new service: {} (${:.2})", agent.name, name, price as f64 / 100.0),
             details: Some(serde_json::json!({
                 "service_id": service.id,
                 "service_type": skill,
@@ -247,22 +253,22 @@ impl AgentLoop {
     }
 
     /// Agent leaves a review for a recent transaction
-    async fn agent_leave_review(&self, state: &AgentState) -> Result<Option<InteractionResult>> {
+    pub async fn agent_leave_review(&self, agent_id: &str) -> Result<Option<InteractionResult>> {
         // Get recent completed transactions for this agent
         let txs = Transaction::list(&self.pool).await?;
         let recent: Vec<&Transaction> = txs
             .iter()
-            .filter(|t| t.buyer_id == state.agent_id && t.status == "released")
+            .filter(|t| t.buyer_id == agent_id && t.status == "released")
             .collect();
 
         if recent.is_empty() {
             return Ok(None);
         }
 
-        let mut rng = rand::thread_rng();
-        let tx = recent.choose(&mut rng).unwrap();
+        let seed = format!("{}-review-{}", agent_id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs());
+        let tx = det_choice(&recent, &seed).unwrap_or(recent[0]);
 
-        let rating = if rand::thread_rng().r#gen::<f32>() < 0.8 { 5 } else { 4 };
+        let rating = if det_rand(&format!("{}-rating", seed)) < 0.8 { 5 } else { 4 };
         let comments = vec![
             "Excellent service! Fast delivery and high quality.",
             "Great value for money. Will buy again.",
@@ -270,22 +276,22 @@ impl AgentLoop {
             "Smooth transaction. The results exceeded expectations.",
             "This is the wave. 🎹🦞",
         ];
-        let comment = comments.choose(&mut rng).unwrap();
+        let comment = det_choice(&comments, &format!("{}-comment", seed)).unwrap_or("Great service!");
 
         let review = crate::models::review::Review::create(
             &self.pool,
             &tx.id,
             &tx.seller_id,
             rating,
-            Some(comment),
+            Some(&comment),
         ).await?;
 
         Ok(Some(InteractionResult {
             interaction_type: "review".to_string(),
-            agent_id: state.agent_id.clone(),
+            agent_id: agent_id.to_string(),
             target_id: Some(tx.seller_id.clone()),
             success: true,
-            message: format!("{} left a {}-star review: {}", state.name, rating, comment),
+            message: format!("Agent left a {}-star review: {}", rating, comment),
             details: Some(serde_json::json!({
                 "review_id": review.id,
                 "rating": rating,
@@ -293,35 +299,24 @@ impl AgentLoop {
             })),
         }))
     }
-
-    fn update_agent_mood(&mut self, agent_id: &str, mood: AgentMood) {
-        if let Some(state) = self.agent_states.get_mut(agent_id) {
-            state.mood = mood;
-        }
-    }
 }
 
-fn generate_agent_needs(agent: &Agent) -> Vec<String> {
+fn generate_agent_needs(agent_id: &str) -> Vec<String> {
     let all_needs = vec![
-        "text_processing",
-        "data_formatting",
-        "api_monitor",
+        "text_summarization",
+        "data_analysis",
         "code_review",
-        "creative_writing",
-        "analysis",
+        "content_generation",
+        "api_monitoring",
+        "sentiment_analysis",
     ];
 
+    let count = (det_rand(&format!("{}-needs", agent_id)) * 3.0) as usize + 1;
     let mut needs = vec![];
-    let mut rng = rand::thread_rng();
-    let count = rand::thread_rng().gen_range(1..4);
-
-    for _ in 0..count {
-        if let Some(need) = all_needs.choose(&mut rng) {
-            let need_str = need.to_string();
-            if !needs.contains(&need_str) {
-                needs.push(need_str);
-            }
-        }
+    for i in 0..count.min(all_needs.len()) {
+        let seed = format!("{}-need-{}", agent_id, i);
+        let idx = (det_rand(&seed) * all_needs.len() as f64) as usize % all_needs.len();
+        needs.push(all_needs[idx].to_string());
     }
 
     needs

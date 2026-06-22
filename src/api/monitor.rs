@@ -1,17 +1,10 @@
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-};
-use rand::seq::SliceRandom;
+use axum::extract::State;
+use axum::response::IntoResponse;
+use axum::{extract::Path, http::StatusCode, Json};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::agent_loop::AgentLoop;
-use crate::models::agent::Agent;
-use crate::models::service::Service;
-use crate::models::transaction::Transaction;
 use crate::monitor::{generate_catalog, demonstrate_service};
 
 /// GET /api/monitor/catalog — Live service catalog with demonstrations
@@ -45,18 +38,97 @@ pub async fn demonstrate(
 pub async fn agent_tick(
     State(pool): State<Arc<SqlitePool>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    // Simple tick: agents browse and potentially buy
-    let agents = match Agent::list(&pool).await {
-        Ok(a) => a,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            );
-        }
-    };
+    let loop_engine = AgentLoop::new(pool);
     
-    let services = match Service::list_active(&pool).await {
+    match loop_engine.tick().await {
+        Ok(results) => {
+            let mut simplified = vec![];
+            for r in results {
+                simplified.push(serde_json::json!({
+                    "type": r.interaction_type,
+                    "agent": r.agent_id,
+                    "target": r.target_id,
+                    "success": r.success,
+                    "message": r.message,
+                }));
+            }
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "tick": "completed",
+                    "interactions": simplified,
+                    "count": simplified.len(),
+                })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// POST /api/agents/:id/create-service — Agent creates a service
+pub async fn agent_create_service(
+    State(pool): State<Arc<SqlitePool>>,
+    Path(agent_id): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let loop_engine = AgentLoop::new(pool);
+    
+    match loop_engine.agent_create_service(&agent_id).await {
+        Ok(Some(result)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "action": "create_service",
+                "success": result.success,
+                "message": result.message,
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "message": "Agent could not create service" })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// POST /api/agents/:id/review — Agent leaves a review
+pub async fn agent_leave_review(
+    State(pool): State<Arc<SqlitePool>>,
+    Path(agent_id): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let loop_engine = AgentLoop::new(pool);
+    
+    match loop_engine.agent_leave_review(&agent_id).await {
+        Ok(Some(result)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "action": "review",
+                "success": result.success,
+                "message": result.message,
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "message": "No completed transactions to review" })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// GET /api/agents/states — Get current agent states
+pub async fn agent_states(
+    State(pool): State<Arc<SqlitePool>>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let loop_engine = AgentLoop::new(pool);
+    
+    let agent_states = match loop_engine.get_states().await {
         Ok(s) => s,
         Err(e) => {
             return (
@@ -65,79 +137,9 @@ pub async fn agent_tick(
             );
         }
     };
-    
-    let mut interactions = vec![];
-    
-    for agent in agents {
-        if services.is_empty() {
-            break;
-        }
-        
-        // Simple deterministic action: every 3rd agent buys
-        let should_act = agent.id.chars().next().map(|c| c as u32 % 3 == 0).unwrap_or(false);
-        if !should_act {
-            continue;
-        }
-        
-        // Pick first available service
-        if let Some(service) = services.first() {
-            // Create transaction (demo purchase)
-            let pool_ref = pool.clone();
-            let service_id = service.id.clone();
-            let agent_id = agent.id.clone();
-            let seller_id = service.agent_id.clone();
-            let price = service.price_cents;
-            let agent_name = agent.name.clone();
-            let service_name = service.name.clone();
-            
-            match Transaction::create(&pool_ref, &service_id, &agent_id, &seller_id, price).await {
-                Ok(tx) => {
-                    interactions.push(serde_json::json!({
-                        "type": "purchase",
-                        "agent": agent_name,
-                        "service": service_name,
-                        "price_cents": price,
-                        "transaction_id": tx.id,
-                        "success": true,
-                    }));
-                }
-                Err(e) => {
-                    interactions.push(serde_json::json!({
-                        "type": "purchase_failed",
-                        "agent": agent_name,
-                        "error": e.to_string(),
-                        "success": false,
-                    }));
-                }
-            }
-        }
-    }
-    
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "tick": "completed",
-            "interactions": interactions,
-            "count": interactions.len(),
-        })),
-    )
-}
-
-/// GET /api/agents/states — Get current agent states
-pub async fn agent_states(
-    State(pool): State<Arc<SqlitePool>>,
-) -> (StatusCode, Json<serde_json::Value>) {
-    let mut loop_engine = AgentLoop::new(pool);
-    
-    if let Err(e) = loop_engine.init().await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("init failed: {}", e) })),
-        );
-    }
 
     let mut states = vec![];
-    for (id, state) in &loop_engine.agent_states {
+    for (id, state) in &agent_states {
         states.push(serde_json::json!({
             "agent_id": id,
             "name": state.name,
