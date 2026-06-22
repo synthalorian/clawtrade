@@ -5,7 +5,7 @@
 //! Enables "try before you buy" for visitors.
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::models::service::Service;
@@ -37,7 +37,7 @@ pub async fn generate_catalog(pool: &SqlitePool) -> Result<ServiceCatalog> {
     let services = Service::list_active(pool).await?;
     
     let mut showcases = Vec::new();
-    let mut total_deliveries = 0i64;
+    let total_deliveries = 0i64;
     
     for service in services.iter().take(10) {
         let showcase = service_type_showcase(&service.service_type);
