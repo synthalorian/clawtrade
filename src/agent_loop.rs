@@ -16,12 +16,10 @@ use sqlx::SqlitePool;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 
 use crate::models::agent::Agent;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
-use crate::AppState;
 
 /// An agent's current state in the marketplace
 #[derive(Debug, Clone, Serialize)]
@@ -82,8 +80,8 @@ pub struct AgentLoop {
 }
 
 impl AgentLoop {
-    pub fn new(state: Arc<AppState>) -> Self {
-        Self { pool: state.pool.clone() }
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
     }
 
     /// Initialize agent states from database

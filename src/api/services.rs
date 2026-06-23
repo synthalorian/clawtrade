@@ -61,6 +61,18 @@ pub async fn create_service(
     Json(req): Json<CreateServiceRequest>,
 ) -> impl IntoResponse {
     // Input validation
+    if req.name.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "name cannot be empty" })),
+        );
+    }
+    if req.description.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "description cannot be empty" })),
+        );
+    }
     if req.price_cents <= 0 {
         return (
             StatusCode::BAD_REQUEST,
