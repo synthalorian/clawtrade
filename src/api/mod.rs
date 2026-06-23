@@ -9,8 +9,10 @@ use crate::AppState;
 pub mod activity;
 pub mod agents;
 pub mod deliverables;
+pub mod health;
 pub mod hosting;
 pub mod llm;
+pub mod marketplace;
 pub mod monitor;
 pub mod pricing;
 pub mod reviews;
@@ -69,11 +71,19 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/api/agents/states", get(monitor::agent_states))
         .route("/api/agents/{id}/create-service", post(monitor::agent_create_service))
         .route("/api/agents/{id}/review", post(monitor::agent_leave_review))
-        // Activity
-        .route("/api/activity", get(activity::global_activity))
+        // Health
+        .route("/health", get(health::health_check))
+        // Marketplace stats
+        .route("/api/marketplace/stats", get(marketplace::marketplace_stats))
+        .route("/api/marketplace/leaderboard", get(marketplace::leaderboard))
+        .route("/api/marketplace/gaps", get(marketplace::marketplace_gaps))
         .route("/api/activity/stats", get(activity::activity_stats))
         .route("/api/activity/agent/{id}", get(activity::agent_activity))
         .route("/api/activity/tx/{id}", get(activity::tx_activity))
+        // Inference monitoring
+        .route("/api/inference/history", get(llm::inference_history))
+        // Try-before-you-buy
+        .route("/api/services/{id}/try", post(services::try_service))
         // WebSocket
         .route("/ws", get(crate::websocket::ws_handler))
         .with_state(state)

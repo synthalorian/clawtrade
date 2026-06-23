@@ -60,7 +60,6 @@ pub async fn create_service(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateServiceRequest>,
 ) -> impl IntoResponse {
-    // Input validation
     if req.name.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -85,12 +84,6 @@ pub async fn create_service(
             Json(serde_json::json!({ "error": "price_cents cannot exceed $500.00" })),
         );
     }
-    if req.name.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "name cannot be empty" })),
-        );
-    }
     if req.agent_id.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -109,7 +102,6 @@ pub async fn create_service(
     .await
     {
         Ok(service) => {
-            // Broadcast service creation event
             crate::websocket::broadcast_event(crate::websocket::DashboardEvent::ServiceCreated {
                 service_id: service.id.clone(),
                 name: service.name.clone(),
@@ -120,6 +112,94 @@ pub async fn create_service(
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TryServiceRequest {
+    pub input: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TryServiceResponse {
+    pub service_name: String,
+    pub model_used: String,
+    pub tier: String,
+    pub execution_time_ms: u64,
+    pub output: String,
+    pub watermark: bool,
+}
+
+pub async fn try_service(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<TryServiceRequest>,
+) -> impl IntoResponse {
+    let service = match Service::get_by_id(&state.pool, &id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "service not found" })),
+            );
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            );
+        }
+    };
+
+    let def = match crate::service_catalog::get_service_definition(&service.service_type) {
+        Some(d) => d,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "service type not in catalog" })),
+            );
+        }
+    };
+
+    let start = std::time::Instant::now();
+
+    match state.llm.deliver_service(def, &req.input).await {
+        Ok(result) => {
+            let execution_time_ms = start.elapsed().as_millis() as u64;
+            let tier_label = match def.tier {
+                crate::service_catalog::ServiceTier::MicroTask => "Micro-Task",
+                crate::service_catalog::ServiceTier::RealWork => "Real Work",
+                crate::service_catalog::ServiceTier::HeavyLifting => "Heavy Lifting",
+                crate::service_catalog::ServiceTier::LocalOnly => "Local-Only",
+            };
+
+            let output = format!(
+                "{result}\n\n---\n💧 PREVIEW — Purchase to remove watermark\n🏷️ Tier: {tier_label} | 🧠 Model: {model} | ⏱️ {execution_time_ms}ms",
+                result = result,
+                tier_label = tier_label,
+                model = def.model.model_name(),
+                execution_time_ms = execution_time_ms
+            );
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!(TryServiceResponse {
+                    service_name: service.name,
+                    model_used: def.model.model_name(),
+                    tier: tier_label.to_string(),
+                    execution_time_ms,
+                    output,
+                    watermark: true,
+                })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("LLM execution failed: {}", e),
+                "service_name": service.name,
+            })),
         ),
     }
 }

@@ -9,6 +9,8 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 const NVIDIA_API_BASE: &str = "https://integrate.api.nvidia.com/v1";
 
@@ -294,6 +296,19 @@ impl LocalLlmClient {
     }
 }
 
+/// Inference record for monitoring and visualization
+#[derive(Debug, Clone, Serialize)]
+pub struct InferenceRecord {
+    pub service_name: String,
+    pub model: String,
+    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub end_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub estimated_tokens: i64,
+    pub actual_tokens: Option<i64>,
+    pub status: String, // "in_progress", "completed", "failed", "fallback"
+    pub fallback_reason: Option<String>,
+}
+
 /// Unified LLM client that prefers local inference, falls back to NVIDIA cloud.
 ///
 /// Local-first architecture: the llama-swap server on port 8080 is the primary
@@ -303,6 +318,7 @@ impl LocalLlmClient {
 pub struct LlmClient {
     nvidia: Option<NvidiaClient>,
     local: LocalLlmClient,
+    inference_history: Arc<Mutex<Vec<InferenceRecord>>>,
 }
 
 impl LlmClient {
@@ -320,7 +336,14 @@ impl LlmClient {
         Self {
             nvidia,
             local: LocalLlmClient::new(local_url, local_model),
+            inference_history: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Get recent inference history (last 50 records)
+    pub async fn get_inference_history(&self) -> Vec<InferenceRecord> {
+        let history = self.inference_history.lock().await;
+        history.iter().rev().take(50).cloned().collect()
     }
 
     #[allow(dead_code)]
