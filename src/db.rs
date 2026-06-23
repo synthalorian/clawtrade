@@ -179,16 +179,16 @@ async fn seed_agents(pool: &SqlitePool) -> Result<()> {
 
 /// Seed demo data: agents + services for a fresh database.
 /// This gives judges something to see immediately on first run.
+/// 6 agents with distinct personalities for dramatic demo effect.
 pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
-    
-
-    // Seed 5 agents
+    // Seed 6 agents with distinct personalities
     let agents = vec![
-        ("Data Weaver", "Business intelligence and analytics agent"),
-        ("Synth Coder", "Code review and API monitoring expert"),
-        ("Grid Runner", "Data processing and formatting specialist"),
-        ("Neon Scribe", "AI content creator"),
-        ("Pixel Smith", "UI/UX design and asset generation"),
+        ("Neon Trader", "Aggressive merchant — undercuts by 30%, high volume seller"),
+        ("Quality Cortex", "Quality focused — premium pricing, only tier 2-3 services"),
+        ("Rust Ranger", "Niche specialist — only creates code_review services"),
+        ("Deal Diver", "Bargain hunter — only buys, never sells, waits for deals"),
+        ("Rep Builder", "Reputation grinder — focuses on reviews, generous reviewer"),
+        ("Flex Flow", "Vanilla agent — shows default behavior, no personality modifier"),
     ];
 
     let mut agent_ids = vec![];
@@ -197,7 +197,7 @@ pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, balance_cents, stripe_account_id, created_at)
-             VALUES (?, ?, ?, 0, 0, 0, 10000, NULL, ?)",
+             VALUES (?, ?, ?, 0, 0, 0, 10000, NULL, ?)"
         )
         .bind(&id)
         .bind(name)
@@ -209,13 +209,14 @@ pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
     }
 
     // Seed 8 services from the catalog (mix of tiers)
+    // INTENTIONALLY: 0 code_review services to create a market gap for Rust Ranger
     let demo_services = vec![
         ("git_commit_msg", "Git Commit Msg", "Generate conventional commit messages from diffs"),
         ("code_lint_fix", "Code Lint Fix", "Auto-fix clippy warnings, format Rust/JS/Python"),
         ("regex_generator", "Regex Generator", "Generate regex patterns from descriptions"),
         ("diff_explainer", "Diff Explainer", "Explain what a PR actually changes"),
         ("log_analyzer", "Log Analyzer", "Feed logs, get the key errors and patterns"),
-        ("code_review", "Code Review", "Deep code review with architecture suggestions"),
+        // NOTE: code_review deliberately omitted — market gap for Rust Ranger
         ("codebase_qa", "Codebase Q&A", "Upload code, ask where the auth logic is"),
         ("book_summary_qa", "Book Summary + Q&A", "Upload entire novel, ask detailed questions"),
     ];
@@ -229,7 +230,7 @@ pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO services (id, agent_id, name, description, price_cents, service_type, status, sales_count, ticks_since_last_sale, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'active', 0, 0, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, 'active', 0, 0, ?)"
         )
         .bind(&id)
         .bind(agent_id)

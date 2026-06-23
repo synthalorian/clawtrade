@@ -31,6 +31,8 @@ pub fn dashboard_router(state: Arc<AppState>) -> Router {
         .route("/monitor", get(monitor_page))
         .route("/agent-loop", get(agent_loop_page))
         .route("/activity", get(activity_page))
+        .route("/inference", get(inference_monitor_page))
+        .route("/api/inference/history", get(inference_history_api))
         .with_state(state)
 }
 
@@ -789,6 +791,16 @@ nav a.active::after {
 }
 @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
+/* ── Try Output Formatting ── */
+.code-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; font-family: var(--mono); font-size: 0.85rem; line-height: 1.6; color: var(--text); overflow-x: auto; white-space: pre-wrap; }
+.commit-badge { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); border-radius: 8px; padding: 1rem; font-family: var(--mono); font-size: 0.9rem; color: var(--success); }
+.regex-pattern { background: rgba(255,190,11,0.1); border: 1px solid rgba(255,190,11,0.3); border-radius: 8px; padding: 1rem; font-family: var(--mono); font-size: 0.9rem; color: var(--accent-3); }
+.diff-view { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; font-family: var(--mono); font-size: 0.8rem; line-height: 1.5; }
+.diff-add { color: var(--success); background: rgba(0,255,136,0.05); padding: 0.15rem 0.5rem; }
+.diff-del { color: var(--accent-2); background: rgba(255,0,110,0.05); padding: 0.15rem 0.5rem; }
+.diff-hunk { color: var(--accent); background: rgba(0,240,255,0.05); padding: 0.15rem 0.5rem; font-weight: 600; }
+.diff-line { color: var(--text-dim); padding: 0.15rem 0.5rem; }
+
 /* ── Footer ── */
 footer {
   text-align: center; padding: 2rem;
@@ -961,14 +973,81 @@ async function runTryService(serviceId) {
     document.getElementById("try-loading").style.display = "none";
     const el = document.getElementById("try-result");
     el.style.display = "block";
-    if (data.result) { el.textContent = data.result; recordTry(serviceId); }
-    else { el.textContent = "Error: " + (data.error || "Unknown error"); }
+    if (data.result) {
+      // Format output based on service type
+      const serviceType = data.service_type || "unknown";
+      el.innerHTML = formatTryOutput(serviceType, data.result);
+      recordTry(serviceId);
+    } else {
+      el.textContent = "Error: " + (data.error || "Unknown error");
+    }
   } catch (e) {
     document.getElementById("try-loading").style.display = "none";
     const el = document.getElementById("try-result");
     el.style.display = "block"; el.textContent = "Error: " + e;
   }
   btn.disabled = false; btn.textContent = "Run Service";
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatTryOutput(serviceType, rawText) {
+  switch(serviceType) {
+    case 'code_lint_fix':
+    case 'code_review':
+    case 'repo_refactor':
+      return '<pre class="code-block">' + escapeHtml(rawText) + '</pre>';
+    case 'git_commit_msg':
+      return '<div class="commit-badge">' + escapeHtml(rawText) + '</div>';
+    case 'regex_generator':
+      return '<div class="regex-pattern">' + escapeHtml(rawText) + '</div>';
+    case 'csv_converter':
+      try {
+        const data = JSON.parse(rawText);
+        return renderJsonTable(data);
+      } catch {
+        return '<pre>' + escapeHtml(rawText) + '</pre>';
+      }
+    case 'diff_explainer':
+      return renderDiffView(rawText);
+    default:
+      return '<pre>' + escapeHtml(rawText) + '</pre>';
+  }
+}
+
+function renderJsonTable(data) {
+  if (!Array.isArray(data) || data.length === 0) return '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+  const keys = Object.keys(data[0]);
+  let html = '<table class="data-table">';
+  html += '<thead><tr>' + keys.map(k => '<th>' + escapeHtml(k) + '</th>').join('') + '</tr></thead>';
+  html += '<tbody>';
+  for (const row of data) {
+    html += '<tr>' + keys.map(k => '<td>' + escapeHtml(String(row[k] ?? '')) + '</td>').join('') + '</tr>';
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderDiffView(rawText) {
+  const lines = rawText.split('\n');
+  let html = '<div class="diff-view">';
+  for (const line of lines) {
+    if (line.startsWith('+')) {
+      html += '<div class="diff-add">' + escapeHtml(line) + '</div>';
+    } else if (line.startsWith('-')) {
+      html += '<div class="diff-del">' + escapeHtml(line) + '</div>';
+    } else if (line.startsWith('@@')) {
+      html += '<div class="diff-hunk">' + escapeHtml(line) + '</div>';
+    } else {
+      html += '<div class="diff-line">' + escapeHtml(line) + '</div>';
+    }
+  }
+  html += '</div>';
+  return html;
 }
 
 // Live Demo (Monitor Page)
@@ -1072,6 +1151,7 @@ fn wrap_page(title: &str, content: &str, active_agents: usize) -> String {
     <a href="/my-purchases">My Purchases</a>
     <a href="/activity">Activity</a>
     <a href="/monitor">Monitor</a>
+    <a href="/inference">Inference</a>
     <a href="/agent-loop">Agent Loop</a>
   </nav>
 </header>
@@ -1973,6 +2053,123 @@ pub async fn activity_page(State(state): State<Arc<AppState>>) -> Html<String> {
         </script>"#,
         stats_html, agent_options, log_rows
     ), agents.len()))
+}
+
+pub async fn inference_monitor_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
+    Html(wrap_page("Inference Monitor", r#"<div class="section">
+  <h2>🔮 Inference Monitor <span class="live-indicator" style="margin-left:1rem;"><span class="dot"></span> LIVE</span></h2>
+  <p style="color:var(--text-dim);margin-bottom:1.5rem;">Real-time model routing across the local LLM fleet</p>
+
+  <div id="active-inferences" class="inference-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin-bottom:2rem;">
+    <p style="color:var(--text-dim);padding:2rem;text-align:center;">Waiting for inference requests...</p>
+  </div>
+
+  <h2 style="color:var(--accent-3);margin-top:2rem;">Recent History</h2>
+  <table class="data-table" id="history-table" style="width:100%;border-collapse:collapse;background:var(--surface);border-radius:12px;overflow:hidden;margin-top:1rem;">
+    <thead>
+      <tr>
+        <th style="background:var(--surface-2);padding:0.75rem 1rem;text-align:left;font-size:0.8rem;text-transform:uppercase;color:var(--muted);">Time</th>
+        <th style="background:var(--surface-2);padding:0.75rem 1rem;text-align:left;font-size:0.8rem;text-transform:uppercase;color:var(--muted);">Service</th>
+        <th style="background:var(--surface-2);padding:0.75rem 1rem;text-align:left;font-size:0.8rem;text-transform:uppercase;color:var(--muted);">Model</th>
+        <th style="background:var(--surface-2);padding:0.75rem 1rem;text-align:left;font-size:0.8rem;text-transform:uppercase;color:var(--muted);">Tier</th>
+        <th style="background:var(--surface-2);padding:0.75rem 1rem;text-align:left;font-size:0.8rem;text-transform:uppercase;color:var(--muted);">Tokens</th>
+        <th style="background:var(--surface-2);padding:0.75rem 1rem;text-align:left;font-size:0.8rem;text-transform:uppercase;color:var(--muted);">Duration</th>
+      </tr>
+    </thead>
+    <tbody id="history-body">
+    </tbody>
+  </table>
+</div>
+<script>
+const ws = new WebSocket((window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host.replace(':8746',':3000') + '/ws');
+const activeContainer = document.getElementById('active-inferences');
+const historyBody = document.getElementById('history-body');
+
+fetch('/api/inference/history')
+  .then(r => r.json())
+  .then(data => {
+    if (data.history && data.history.length > 0) {
+      data.history.reverse().forEach(addHistoryRow);
+    }
+  });
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.event === 'InferenceStarted') {
+    const card = document.createElement('div');
+    card.className = 'card inference-card tier-' + (msg.tier || 'micro');
+    card.id = 'inf-' + msg.service_name;
+    card.style.cssText = 'border-left:4px solid var(--accent-2);animation:slideIn 0.3s ease-out;';
+    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;"><span style="font-weight:600;font-size:1.05rem;">' + msg.service_name + '</span><span class="tier-badge ' + (msg.tier || 'micro') + '">' + (msg.tier || 'micro') + '</span></div><div style="color:var(--muted);font-size:0.85rem;font-family:var(--mono);margin-bottom:0.5rem;">' + msg.model + '</div><div style="display:flex;gap:1.5rem;font-size:0.85rem;color:var(--muted);"><div>⚡ <span style="color:var(--text);font-weight:500;">Running...</span></div><div>📊 ~' + msg.estimated_tokens + ' tokens</div></div>';
+    if (activeContainer.querySelector('p')) activeContainer.innerHTML = '';
+    activeContainer.prepend(card);
+  }
+  if (msg.event === 'InferenceCompleted') {
+    const card = document.getElementById('inf-' + msg.service_name);
+    if (card) {
+      card.querySelector('.metric-value')?.textContent = msg.duration_ms + 'ms';
+      card.style.opacity = '0.7';
+      setTimeout(() => card.remove(), 3000);
+    }
+    addHistoryRow({
+      timestamp: Math.floor(Date.now() / 1000),
+      service_name: msg.service_name,
+      model: msg.model,
+      tier: inferTier(msg.model),
+      input_tokens: msg.actual_tokens,
+      duration_ms: msg.duration_ms
+    });
+  }
+  if (msg.event === 'ModelFallback') {
+    addHistoryRow({
+      timestamp: Math.floor(Date.now() / 1000),
+      service_name: 'fallback',
+      model: msg.requested,
+      tier: 'local',
+      input_tokens: 0,
+      duration_ms: 0,
+      status: 'fallback'
+    });
+  }
+};
+
+function inferTier(model) {
+  const m = model.toLowerCase();
+  if (m.includes('9b')) return 'micro';
+  if (m.includes('12b') || m.includes('35b')) return 'real';
+  if (m.includes('26b') || m.includes('reasoning')) return 'heavy';
+  return 'local';
+}
+
+function addHistoryRow(record) {
+  const row = document.createElement('tr');
+  const time = new Date(record.timestamp * 1000).toLocaleTimeString();
+  const tier = record.tier || 'local';
+  const tierColors = { micro: 'var(--accent)', real: 'var(--accent-3)', heavy: 'var(--accent-2)', local: 'var(--success)' };
+  row.innerHTML = '<td style="padding:0.75rem 1rem;border-top:1px solid var(--surface-2);font-size:0.9rem;">' + time + '</td><td style="padding:0.75rem 1rem;border-top:1px solid var(--surface-2);font-size:0.9rem;">' + record.service_name + '</td><td style="padding:0.75rem 1rem;border-top:1px solid var(--surface-2);font-size:0.9rem;"><code>' + record.model + '</code></td><td style="padding:0.75rem 1rem;border-top:1px solid var(--surface-2);font-size:0.9rem;"><span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;padding:0.2rem 0.5rem;border-radius:4px;font-weight:600;background:' + tierColors[tier] + '22;color:' + tierColors[tier] + ';">' + tier + '</span></td><td style="padding:0.75rem 1rem;border-top:1px solid var(--surface-2);font-size:0.9rem;">' + (record.input_tokens || '-') + '</td><td style="padding:0.75rem 1rem;border-top:1px solid var(--surface-2);font-size:0.9rem;">' + record.duration_ms + 'ms</td>';
+  historyBody.prepend(row);
+  if (historyBody.children.length > 20) historyBody.lastChild.remove();
+}
+</script>
+<style>
+.inference-card { border-left: 4px solid var(--accent-2); }
+.inference-card.tier-micro { border-left-color: var(--accent); }
+.inference-card.tier-real { border-left-color: var(--accent-3); }
+.inference-card.tier-heavy { border-left-color: var(--accent-2); }
+.inference-card.tier-local { border-left-color: var(--success); }
+.tier-badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600; }
+.tier-badge.micro { background: rgba(0,240,255,0.15); color: var(--accent); }
+.tier-badge.real { background: rgba(255,190,11,0.15); color: var(--accent-3); }
+.tier-badge.heavy { background: rgba(255,0,110,0.15); color: var(--accent-2); }
+.tier-badge.local { background: rgba(0,255,136,0.15); color: var(--success); }
+@keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+</style>"#, all_agents.len()))
+}
+
+pub async fn inference_history_api(State(state): State<Arc<AppState>>) -> axum::Json<serde_json::Value> {
+    let history = state.llm.get_inference_history().await;
+    axum::Json(serde_json::json!({ "history": history }))
 }
 
 /* ─────────── HELPERS ─────────── */

@@ -264,6 +264,10 @@ pub async fn create_checkout(
     ];
 
     if let Some(stripe_account_id) = seller.stripe_account_id {
+        // Platform fee: 10% on every transaction (Stripe Connect Express)
+        // The transfer to the seller's Connect account happens automatically
+        // when the checkout session completes, via transfer_data[destination].
+        // No separate Transfer::create call is needed — Stripe handles it.
         let platform_fee = (service.price_cents as f64 * 0.10).round() as i64;
         params.push(("transfer_data[destination]", stripe_account_id));
         params.push(("application_fee_amount", platform_fee.to_string()));
