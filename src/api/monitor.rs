@@ -122,6 +122,111 @@ pub async fn agent_leave_review(
     }
 }
 
+/// GET /api/monitor/stats — Marketplace analytics
+pub async fn marketplace_stats(
+    State(pool): State<Arc<SqlitePool>>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let total_revenue: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE status = 'paid' OR status = 'released'"
+    )
+    .fetch_one(&*pool)
+    .await
+    .unwrap_or(0);
+
+    let total_transactions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions")
+        .fetch_one(&*pool)
+        .await
+        .unwrap_or(0);
+
+    let total_services: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM services WHERE status = 'active'")
+        .fetch_one(&*pool)
+        .await
+        .unwrap_or(0);
+
+    let total_services_all: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM services")
+        .fetch_one(&*pool)
+        .await
+        .unwrap_or(0);
+
+    let total_agents: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agents")
+        .fetch_one(&*pool)
+        .await
+        .unwrap_or(0);
+
+    let tier_counts: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT service_type, COUNT(*) as cnt FROM services WHERE status = 'active' GROUP BY service_type"
+    )
+    .fetch_all(&*pool)
+    .await
+    .unwrap_or_default();
+
+    let mut tier_micro = 0i64;
+    let mut tier_real = 0i64;
+    let mut tier_heavy = 0i64;
+    let mut tier_local = 0i64;
+    let mut tier_unknown = 0i64;
+
+    for (svc_type, count) in tier_counts {
+        if let Some(def) = crate::service_catalog::get_service_definition(&svc_type) {
+            match def.tier {
+                crate::service_catalog::ServiceTier::MicroTask => tier_micro += count,
+                crate::service_catalog::ServiceTier::RealWork => tier_real += count,
+                crate::service_catalog::ServiceTier::HeavyLifting => tier_heavy += count,
+                crate::service_catalog::ServiceTier::LocalOnly => tier_local += count,
+            }
+        } else {
+            tier_unknown += count;
+        }
+    }
+
+    let top_agents: Vec<(String, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, name, total_sales, total_revenue_cents FROM agents ORDER BY total_revenue_cents DESC LIMIT 5"
+    )
+    .fetch_all(&*pool)
+    .await
+    .unwrap_or_default();
+
+    let recent_txs: Vec<(String, String, i64, String)> = sqlx::query_as(
+        "SELECT t.id, s.name, t.amount_cents, t.status 
+         FROM transactions t 
+         JOIN services s ON t.service_id = s.id 
+         ORDER BY t.created_at DESC LIMIT 10"
+    )
+    .fetch_all(&*pool)
+    .await
+    .unwrap_or_default();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "total_revenue_cents": total_revenue,
+            "total_transactions": total_transactions,
+            "active_services": total_services,
+            "total_services_created": total_services_all,
+            "total_agents": total_agents,
+            "tier_distribution": {
+                "micro": tier_micro,
+                "real": tier_real,
+                "heavy": tier_heavy,
+                "local": tier_local,
+                "unknown": tier_unknown,
+            },
+            "top_agents": top_agents.iter().map(|(id, name, sales, rev)| serde_json::json!({
+                "id": id,
+                "name": name,
+                "sales": sales,
+                "revenue_cents": rev,
+            })).collect::<Vec<_>>(),
+            "recent_transactions": recent_txs.iter().map(|(id, name, amount, status)| serde_json::json!({
+                "id": id,
+                "service_name": name,
+                "amount_cents": amount,
+                "status": status,
+            })).collect::<Vec<_>>(),
+        })),
+    )
+}
+
 /// GET /api/agents/states — Get current agent states
 pub async fn agent_states(
     State(pool): State<Arc<SqlitePool>>,

@@ -62,7 +62,14 @@ pub async fn execute_service(
     };
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
-    let powered_by = if std::env::var("NVIDIA_API_KEY").is_ok() {
+    let powered_by = if let Some(def) = crate::service_catalog::get_service_definition(&service.service_type) {
+        format!("{} ({}, {})", def.model.model_name(), def.model.context_size(), match def.tier {
+            crate::service_catalog::ServiceTier::MicroTask => "Micro-Task",
+            crate::service_catalog::ServiceTier::RealWork => "Real Work",
+            crate::service_catalog::ServiceTier::HeavyLifting => "Heavy Lifting",
+            crate::service_catalog::ServiceTier::LocalOnly => "Local-Only",
+        })
+    } else if std::env::var("NVIDIA_API_KEY").is_ok() {
         "NVIDIA Nemotron 3 Ultra".to_string()
     } else {
         "Local LLM (Qwen3.5-9B via llama-swap)".to_string()

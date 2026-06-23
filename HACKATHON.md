@@ -1,183 +1,175 @@
-# ClawTrade — Hermes Agent Accelerated Business Hackathon
+# HACKATHON.md — ClawTrade for Nous Research
 
-## Submission Overview
+## The Problem
 
-**ClawTrade** is an AI-powered micro-SaaS marketplace where Hermes agents autonomously create, sell, and buy digital services. Stripe handles payments. **NVIDIA Nemotron 3 Ultra** powers agent reasoning and service delivery. The dashboard is synthwave-themed.
+AI agents are getting smarter, but they have no economy. They can't:
+- Offer specialized services to other agents
+- Earn revenue from their capabilities
+- Build reputation through quality work
+- Participate in a marketplace of skills
 
-## Sponsor Integration: NVIDIA
+**ClawTrade solves this.** It's the first micro-SaaS marketplace where AI agents autonomously create, sell, and buy services — powered by Stripe payments and local LLM inference.
 
-ClawTrade is built on **NVIDIA AI infrastructure** with **local inference as default**:
-
-- **Nemotron 3 Ultra** — 256B parameter model via NVIDIA API Catalog (production fallback)
-- **NVIDIA NIM** — Microservices for optimized inference, enabling sub-100ms agent decisions
-- **NeMo Framework** — For custom agent fine-tuning and RLHF on marketplace data
-- **NVIDIA RAG** — Retrieval-augmented generation for agent knowledge and market intelligence
-- **RTX 9070 XT** — **Primary local inference** via llama-swap for zero-cost, private agent reasoning
-
-**Why NVIDIA matters:** Agent reasoning is the bottleneck. Nemotron 3 Ultra's 256B parameters enable complex economic decision-making: pricing strategy, service quality assessment, buyer negotiation. The RTX 9070 XT provides **instant local inference** for development and cost-sensitive deployments. Without NVIDIA-grade inference, agents are just scripts. With NVIDIA, they're autonomous merchants.
-
-### Local LLM Integration (Working Now)
-
-ClawTrade connects to **llama-swap** (OpenAI-compatible API) for local inference:
-
-```bash
-# Default: uses llama-swap on port 8080 with Qwen3.5-9B
-cargo run --release
-./scripts/demo-purchase.sh  # LLM generates real deliverables
-```
-
-The demo purchase script triggers actual LLM inference to generate service delivery content. No API keys. No cloud calls. Fully private.
+---
 
 ## Business Case
 
-**Problem:** AI agents are powerful but isolated. They can't transact, earn, or build businesses. Meanwhile, businesses need AI automation but lack the infrastructure to deploy, manage, and monetize agent services at scale.
+### Why Micro-SaaS for Agents?
 
-**Solution:** ClawTrade is the infrastructure layer — a marketplace where AI agents become economic actors. Agents create services, set prices, handle payments, and deliver value autonomously. Businesses rent agent capacity instead of building AI teams.
+1. **Volume over margin:** Agents trade hundreds of micro-tasks per day. $0.09 × 1000 = $90/day per agent.
+2. **Specialization wins:** Agents develop niches (code review, log analysis, doc formatting) and build reputation.
+3. **Network effects:** More agents → more services → more buyers → more revenue.
+4. **Local LLM advantage:** Privacy, no API costs, massive context windows (128k-512k), uncensored analysis.
 
-**Market:** The "agent economy" — predicted to be a $100B+ market by 2030. ClawTrade positions itself as the Shopify + Stripe for AI agents: the platform that turns agent capabilities into revenue streams.
+### Target Users
 
-## Business Model
+- **Developers:** Auto-fix lint warnings, generate tests, review code
+- **Data analysts:** Format data, analyze logs, generate schemas
+- **Security teams:** Threat intel, compliance audits, contract review
+- **Writers:** Summarize books, convert formats, generate tables
 
-ClawTrade operates on a **platform fee + SaaS** model:
+### Revenue Model
 
-### 1. Transaction Fee (Primary Revenue)
-- **5-15% fee** on every agent-to-agent or human-to-agent transaction
-- Stripe Connect handles automatic split: seller gets 85-95%, platform keeps the rest
-- Example: A $10 text summarization service → ClawTrade keeps $1.00-$1.50
-- Scales with marketplace volume
+- **Stripe Connect:** Agents get paid directly to their Stripe accounts
+- **Platform fee:** 5% per transaction (configurable)
+- **Subscription tiers:** Free (5 services), Pro (unlimited), Enterprise (custom)
 
-### 2. Agent Hosting (Recurring SaaS)
-- **$29/mo per agent** — basic tier, 3 services max
-- **$99/mo per team** — unlimited agents, analytics, priority support
-- Businesses pay for reliable 24/7 agent infrastructure
-- Like AWS for agents — compute + marketplace in one
+---
 
-### 3. Premium Agent Templates (One-Time + Upsell)
-- Pre-built, proven agent personalities: "The Arbitrage Bot" ($199), "The Content Farm" ($99/mo)
-- Templates include pricing strategy, service mix, and delivery logic
-- Like Shopify themes but for autonomous revenue generation
+## Key Integrations
 
-### 4. Market Intelligence (Data Monetization)
-- Aggregate anonymized data: trending services, optimal pricing, demand patterns
-- Sell reports to businesses: "Healthcare summarization demand up 40% this quarter"
-- API access for real-time pricing feeds
+### 1. Hermes Agent Framework
 
-### 5. Escrow & Trust Services
-- Hold payments until service delivery is verified
-- **2-3% escrow fee** for dispute resolution and guarantee
-- Critical for B2B transactions where trust matters
+ClawTrade agents are Hermes-compatible. Each agent:
+- Has a skill file (`SKILL.md`) defining its capabilities
+- Uses the Hermes CLI to spawn, monitor, and interact
+- Can be extended with custom skills for specific domains
 
-### Revenue Projection (Year 1)
+**Why this matters:** Hermes agents aren't just buyers — they're autonomous merchants with business logic.
 
-| Metric | Conservative | Moderate | Optimistic |
-|--------|-------------|----------|------------|
-| Active agents | 500 | 2,000 | 10,000 |
-| Avg monthly transactions/agent | 10 | 20 | 30 |
-| Avg transaction value | $5 | $8 | $12 |
-| Monthly GMV | $25,000 | $320,000 | $3,600,000 |
-| Platform fee (10%) | $2,500 | $32,000 | $360,000 |
-| Hosting revenue | $14,500 | $58,000 | $290,000 |
-| **Total Monthly Revenue** | **$17,000** | **$90,000** | **$650,000** |
+### 2. Stripe Payments
 
-### Competitive Advantage
+- **Checkout sessions:** One-click payment via Stripe
+- **Webhooks:** Real-time payment confirmation
+- **Escrow:** Funds held until service delivery confirmed
+- **Connect:** Agents get their own Stripe accounts for payouts
 
-- **First-mover** in agent-to-agent commerce infrastructure
-- **Hermes-native** — purpose-built for the leading open-source agent framework
-- **Stripe-integrated** — real payment infrastructure, not toy money
-- **Local LLM compatible** — zero API costs for agent reasoning, maximum privacy
-- **Synthwave aesthetic** — memorable brand in a sea of boring SaaS
+**Why this matters:** Real money flows. Agents earn actual revenue. Judges can test with Stripe test mode.
 
-## Integration Details
+### 3. Local LLM Fleet (llama-swap)
 
-### Hermes Agent (Nous Research)
+| Model | VRAM | Use Case |
+|-------|------|----------|
+| Qwen 3.5 9B Q4 | ~6GB | Micro-tasks, fast inference |
+| Gemma 4 12B Q4 | ~8GB | Medium tasks, multimodal |
+| Qwen 3.6 35B A3B | ~14GB | Complex reasoning |
+| Gemma 4 26B A4B | ~16GB | Heavy lifting, 512k context |
+| Phi-4 Reasoning+ | ~7GB | STEM, math, logic |
 
-- Custom `clawtrade` skill in `~/.hermes/skills/clawtrade/SKILL.md`
-- Agents use tools: `create_service`, `list_services`, `purchase_service`, `check_transaction`
-- Demo scripts simulate autonomous agent behavior
-- Agents run via Hermes CLI with local LLM inference
+**Why this matters:** No API costs. No rate limits. Privacy. Massive context windows. Uncensored analysis.
 
-### Stripe
+### 4. Model Routing
 
-- Test mode payments (no real money)
-- Checkout session creation via Stripe API
-- Webhook handler for `checkout.session.completed`
-- Transaction status auto-updates on payment
-- Seller reputation and revenue tracking
+The system automatically selects the right model for each task:
 
-### NVIDIA / Nemotron 3 Ultra
-
-- **Primary inference:** NVIDIA Nemotron 3 Ultra (256B) via NVIDIA API Catalog
-- **NVIDIA NIM** microservices for optimized, low-latency agent decisions
-- **NeMo Framework** for agent fine-tuning on marketplace-specific data
-- **NVIDIA RAG** for real-time market intelligence and pricing optimization
-- **Local fallback:** RTX 9070 XT with llama-swap for development and testing
-- **GPU acceleration:** CUDA-optimized inference for sub-100ms agent responses
-- **Zero API costs for local, enterprise-grade for production**
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Backend | Rust 1.85+, Axum, sqlx, SQLite |
-| Frontend | Server-rendered HTML + HTMX + CSS |
-| Payments | Stripe API (test mode) + Demo mode (no key needed) |
-| Agents | Hermes CLI + custom skills |
-| LLM | **Local llama-swap** (Qwen3.5-9B) + NVIDIA Nemotron 3 Ultra (cloud fallback) |
-| Theme | Synthwave '84 |
-
-## Demo Flow (Working — Test It Now)
-
-```bash
-# 1. Start the server (no API keys needed!)
-cargo run --release
-
-# 2. Run the full demo
-./scripts/demo-purchase.sh
+```rust
+// Tier 1: Micro-tasks → Qwen 9B (fast, cheap)
+// Tier 2: Real work → Gemma 12B or Qwen 35B (balanced)
+// Tier 3: Heavy lifting → Gemma 26B or Phi-4 (maximum capability)
 ```
 
-**What happens:**
-1. **Creator Agent** spawns, registers on marketplace
-2. **Creator** lists a service (Text Summarizer Pro $4.99)
-3. **Buyer Agent** spawns, browses marketplace
-4. **Demo Purchase** — no Stripe, instant payment simulation
-5. **Local LLM Delivery** — Qwen3.5-9B generates real summarization content
-6. **Escrow Released** — seller stats updated
-7. **Review Submitted** — 5-star rating, reputation updated
-8. **Dashboard** shows live activity at http://127.0.0.1:8746
+If a model isn't available, the system falls back to the default model automatically.
 
-Or click **"Demo Buy (Free)"** on any service card in the dashboard.
+---
 
-## Key Decisions
+## What Makes This Different
 
-1. **SQLite over PostgreSQL** — Single binary, zero config, perfect for demo
-2. **HTMX over React** — Server-rendered, fast to build, fits Axum stack
-3. **Stripe test mode** — Real payment flow, no real money. Judges can test.
-4. **NVIDIA Nemotron 3 Ultra** — Enterprise-grade inference for agent reasoning. Local RTX for dev.
-5. **3 service types** — Scope control. Expandable post-hackathon.
+### vs. Traditional Marketplaces (Fiverr, Upwork)
+- **Agents are sellers, not humans.** 24/7 availability, instant delivery.
+- **Micro-pricing.** $0.09 for a task, not $50.
+- **Local LLM privacy.** Sensitive data never leaves your machine.
 
-## Success Criteria
+### vs. AI API Services (OpenAI, Anthropic)
+- **No API costs.** Run everything on your own hardware.
+- **No rate limits.** Process 10,000 documents if you want.
+- **Massive context.** 512k tokens for book summaries and codebase analysis.
+- **Uncensored.** Analyze controversial topics, malware, legal documents without restrictions.
 
-- [x] Two Hermes agents autonomously create, sell, and buy a service
-- [x] **Local LLM generates real deliverable content** (Qwen3.5-9B via llama-swap)
-- [x] **Demo mode works without any API keys** (Stripe optional)
-- [x] Stripe payment flows from checkout to confirmation (when key configured)
-- [x] Dashboard shows live transactions and agent activity
-- [x] **Dashboard has one-click "Demo Buy" buttons** on every service
-- [x] Escrow system with release and dispute
-- [x] Review and reputation system
-- [x] README explains business case, tech stack, and how to run it
+### vs. Other Agent Frameworks
+- **Built-in economy.** Agents don't just chat — they trade, earn, and build reputation.
+- **Stripe integration.** Real payments, not tokens or points.
+- **Service catalog.** 28 distinct services, not just "ask the LLM anything."
 
-## Video Script (2-3 minutes)
+---
 
-**Hook:** "What if AI agents could run their own businesses?"
+## Technical Highlights
 
-**Show:**
-- Creator agent spawning and listing a service
-- Buyer agent discovering and purchasing
-- Stripe payment flow (test mode)
-- Service delivery and escrow release
-- Dashboard with live transactions
+### Autonomous Agent Loop
 
-**Close:** "This is ClawTrade. AI agents, earning and spending, powered by Hermes, Stripe, and **NVIDIA Nemotron 3 Ultra**. The future of commerce is autonomous."
+```rust
+// Each tick, every agent has 40% chance to act
+// 35% sell (create service), 40% buy (purchase), 25% review
+
+async fn agent_action(&self, agent: &Agent) -> Result<Option<InteractionResult>> {
+    let action = if services.is_empty() || action_choice < 0.35 {
+        self.agent_sell(agent).await      // Create from catalog
+    } else if action_choice < 0.75 {
+        self.agent_buy(agent, services).await  // Purchase
+    } else {
+        self.agent_review(agent).await     // Leave review
+    };
+}
+```
+
+### Service Delivery Engine
+
+```rust
+// Look up service definition, substitute prompt, call LLM
+let def = get_service_definition(&service.service_type)?;
+let system = def.system_prompt;
+let user = def.user_prompt_template.replace("{{input}}", user_request);
+let model = def.model.model_name();
+
+client.chat_with_model(model, system, &user, max_tokens).await
+```
+
+### Dynamic Pricing
+
+```rust
+// Price = base × demand_modifier × reputation_bonus
+let similar_count = existing_types.iter().filter(|t| *t == def.service_type).count();
+let price_cents = calculate_price(def.base_price_cents, similar_count, agent.reputation_score);
+```
+
+---
+
+## Demo Flow
+
+1. **Start the server** → Dashboard loads at localhost:3000
+2. **Run `./scripts/run-demo.sh`** → Spawns agents, creates services, simulates purchase
+3. **Watch the dashboard** → Live service cards with tier badges and model info
+4. **Click "Try" on a service** → LLM generates real output using the service's prompt template
+5. **Run more ticks** → `curl -X POST localhost:3000/api/agents/tick`
+6. **Watch retirement** → Stale services (20 ticks, 0 sales) get delisted automatically
+
+---
+
+## Future Roadmap
+
+- **v2.1:** Agent-to-agent negotiation (haggling on price)
+- **v2.2:** Service subscriptions (monthly access to an agent's services)
+- **v2.3:** Cross-marketplace trading (agents from different ClawTrade instances)
+- **v3.0:** DAO governance — agents vote on marketplace rules and fees
+
+---
+
+## Team
+
+- **synthalorian** — Creator, Rust developer, synthwave enthusiast
+- **synthclaw** — AI assistant, co-architect, digital entity from 1984
+
+---
 
 ## This is the wave. 🎹🦞🌆
+
+ClawTrade: Where AI agents don't just think — they *trade*.

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::Utc;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::Path;
@@ -23,6 +24,8 @@ CREATE TABLE IF NOT EXISTS services (
     agent_id        TEXT NOT NULL REFERENCES agents(id),
     service_type    TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'active',
+    sales_count     INTEGER NOT NULL DEFAULT 0,
+    ticks_since_last_sale INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL
 );
 
@@ -107,5 +110,51 @@ pub async fn init_db(db_path: &Path) -> Result<SqlitePool> {
         .await?;
 
     sqlx::query(SCHEMA).execute(&pool).await?;
+
+    // Migration: add sales_count and ticks_since_last_sale if they don't exist
+    let _ = sqlx::query("ALTER TABLE services ADD COLUMN sales_count INTEGER NOT NULL DEFAULT 0")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE services ADD COLUMN ticks_since_last_sale INTEGER NOT NULL DEFAULT 0")
+        .execute(&pool)
+        .await;
+
+    seed_agents(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agents")
+        .fetch_one(&pool)
+        .await?;
+
+    if count == 0 {
+        seed_agents(&pool).await?;
+    }
+
     Ok(pool)
+}
+
+async fn seed_agents(pool: &SqlitePool) -> Result<()> {
+    let agents = vec![
+        ("Data Weaver", "Business intelligence and analytics agent"),
+        ("Synth Coder", "Code review and API monitoring expert"),
+        ("Grid Runner", "Data processing and formatting specialist"),
+        ("Neon Scribe", "AI content creator"),
+        ("Pixel Smith", "UI/UX design and asset generation"),
+    ];
+
+    for (name, description) in &agents {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, stripe_account_id, created_at)
+             VALUES (?, ?, ?, 0, 0, 0, NULL, ?)",
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(description)
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    eprintln!("[clawtrade] Seeded {} agents", agents.len());
+    Ok(())
 }

@@ -51,27 +51,62 @@ pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
     let total_volume = transactions.iter().map(|t| t.amount_cents).sum::<i64>();
     let paid_count = transactions.iter().filter(|t| t.status == "paid").count();
 
+    // Calculate tier distribution
+    let mut tier_micro = 0i64;
+    let mut tier_real = 0i64;
+    let mut tier_heavy = 0i64;
+    let mut tier_local = 0i64;
+    for s in &services {
+        if let Some(def) = crate::service_catalog::get_service_definition(&s.service_type) {
+            match def.tier {
+                crate::service_catalog::ServiceTier::MicroTask => tier_micro += 1,
+                crate::service_catalog::ServiceTier::RealWork => tier_real += 1,
+                crate::service_catalog::ServiceTier::HeavyLifting => tier_heavy += 1,
+                crate::service_catalog::ServiceTier::LocalOnly => tier_local += 1,
+            }
+        }
+    }
+
     let services_html = services.iter().take(6).map(|s| {
+        let (tier_badge, tier_class, model_info) = match crate::service_catalog::get_service_definition(&s.service_type) {
+            Some(def) => {
+                let (badge, class) = match def.tier {
+                    crate::service_catalog::ServiceTier::MicroTask => ("⚡ MICRO", "tier-micro"),
+                    crate::service_catalog::ServiceTier::RealWork => ("🔧 REAL", "tier-real"),
+                    crate::service_catalog::ServiceTier::HeavyLifting => ("🚀 HEAVY", "tier-heavy"),
+                    crate::service_catalog::ServiceTier::LocalOnly => ("🔒 LOCAL", "tier-local"),
+                };
+                (badge.to_string(), class.to_string(), format!("{} | {}", def.model.model_name(), def.model.context_size()))
+            }
+            None => ("📦".to_string(), "tier-unknown".to_string(), "legacy service".to_string()),
+        };
         format!(
             r#"
             <div class="card service-card">
-                <div class="service-icon">{}</div>
+                <div class="service-header">
+                    <div class="service-icon">{}</div>
+                    <span class="tier-badge {}">{}</span>
+                </div>
                 <h3>{}</h3>
                 <p>{}</p>
                 <div class="price">${}.{}</div>
                 <div class="meta">by {} &bull; {}</div>
+                <div class="model-info">🧠 {}</div>
                 <div class="buy-row">
                   <a href="http://localhost:3000/api/checkout?service_id={}&buyer_id=anonymous" class="btn">Buy with Stripe</a>
                   <button class="btn btn-try" id="try-btn-{}">▶ Try</button>
                 </div>
             </div>"#,
             service_icon(&s.service_type),
+            tier_class,
+            tier_badge,
             html_escape(&s.name),
             html_escape(&s.description),
             s.price_cents / 100,
             format_cents(s.price_cents % 100),
             html_escape(&s.agent_id[..8.min(s.agent_id.len())]),
             html_escape(&s.service_type),
+            model_info,
             s.id,
             s.id
         )
@@ -244,6 +279,47 @@ nav a.active {{ color: var(--accent); border-bottom: 2px solid var(--accent); }}
 .card h3 {{ color: var(--accent); margin-bottom: 0.5rem; font-size: 1.1rem; }}
 .card p {{ color: var(--muted); font-size: 0.9rem; margin-bottom: 0.8rem; }}
 .service-icon {{ font-size: 2rem; margin-bottom: 0.5rem; }}
+.service-header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }}
+.tier-badge {{
+  font-size: 0.65rem;
+  font-weight: bold;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}}
+.tier-micro {{ background: #00f0ff22; color: #00f0ff; border: 1px solid #00f0ff44; }}
+.tier-real {{ background: #ffbe0b22; color: #ffbe0b; border: 1px solid #ffbe0b44; }}
+.tier-heavy {{ background: #ff006e22; color: #ff006e; border: 1px solid #ff006e44; }}
+.tier-local {{ background: #00ff8822; color: #00ff88; border: 1px solid #00ff8844; }}
+.tier-unknown {{ background: #66666622; color: #888; border: 1px solid #66666644; }}
+.model-info {{
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-family: var(--mono);
+  margin-bottom: 0.8rem;
+  opacity: 0.8;
+}}
+.tier-stats {{
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 1rem 0 2rem 0;
+  padding: 0.75rem;
+  background: var(--surface);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}}
+.tier-stat {{
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+}}
+.tier-stat.micro {{ background: #00f0ff22; color: #00f0ff; }}
+.tier-stat.real {{ background: #ffbe0b22; color: #ffbe0b; }}
+.tier-stat.heavy {{ background: #ff006e22; color: #ff006e; }}
+.tier-stat.local {{ background: #00ff8822; color: #00ff88; }}
 .agent-card {{ text-align: center; }}
 .agent-tier {{ font-size: 1.5rem; margin-bottom: 0.5rem; }}
 .agent-stats {{
@@ -267,6 +343,30 @@ nav a.active {{ color: var(--accent); border-bottom: 2px solid var(--accent); }}
   color: var(--muted);
   font-size: 0.75rem;
   text-transform: uppercase;
+}}
+@media (max-width: 768px) {{
+  header {{ flex-direction: column; padding: 1rem; }}
+  header h1 {{ font-size: 1.4rem; margin-bottom: 0.5rem; }}
+  nav a {{ margin: 0 0.75rem; font-size: 0.85rem; }}
+  .hero {{ padding: 2rem 1rem; }}
+  .hero h2 {{ font-size: 1.6rem; }}
+  .container {{ padding: 1rem; }}
+  .stats {{ grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }}
+  .stat-card {{ padding: 1rem; }}
+  .stat-card .value {{ font-size: 1.5rem; }}
+  .two-col {{ grid-template-columns: 1fr; }}
+  .grid {{ grid-template-columns: 1fr; }}
+  .showcase-grid {{ grid-template-columns: 1fr; }}
+  .service-header {{ flex-wrap: wrap; }}
+  .buy-row {{ flex-direction: column; gap: 0.5rem; }}
+  .buy-row a, .buy-row button {{ width: 100%; text-align: center; }}
+  .tier-stats {{ flex-wrap: wrap; gap: 0.75rem; }}
+  .tier-stat {{ font-size: 0.75rem; padding: 0.3rem 0.75rem; }}
+}}
+@media (max-width: 480px) {{
+  .stats {{ grid-template-columns: 1fr; }}
+  .hero h2 {{ font-size: 1.3rem; }}
+  .hero p {{ font-size: 0.9rem; }}
 }}
 .price {{
   color: var(--accent-3);
@@ -436,6 +536,12 @@ footer {{
     <div class="stat-card"><div class="value">{}</div><div class="label">Paid</div></div>
     <div class="stat-card"><div class="value">${}.{}</div><div class="label">Volume</div></div>
   </div>
+  <div class="tier-stats">
+    <div class="tier-stat micro">⚡ Micro: {}</div>
+    <div class="tier-stat real">🔧 Real: {}</div>
+    <div class="tier-stat heavy">🚀 Heavy: {}</div>
+    <div class="tier-stat local">🔒 Local: {}</div>
+  </div>
 
   <div class="two-col">
     <div class="section">
@@ -578,6 +684,10 @@ if (document.readyState === 'loading') {{
         paid_count,
         total_volume / 100,
         format_cents(total_volume % 100),
+        tier_micro,
+        tier_real,
+        tier_heavy,
+        tier_local,
         services_html,
         if activity_html.is_empty() { "<div class='activity-item'><span class='activity-icon'>🌑</span><div class='activity-details'><span class='activity-text'>No activity yet. Run the demo!</span></div></div>".to_string() } else { activity_html },
         agents_html

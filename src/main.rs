@@ -15,6 +15,7 @@ mod delivery;
 mod models;
 mod monitor;
 mod nvidia;
+mod service_catalog;
 mod websocket;
 
 #[derive(Clone)]
@@ -68,6 +69,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/templates/{id}/deploy", post(api::templates::deploy_template))
         .route("/api/monitor/catalog", get(api::monitor::get_catalog))
         .route("/api/monitor/demonstrate/{service_id}", get(api::monitor::demonstrate))
+        .route("/api/monitor/stats", get(api::monitor::marketplace_stats))
         .route("/api/agents/tick", post(api::monitor::agent_tick))
         .route("/api/agents/states", get(api::monitor::agent_states))
         .route("/api/agents/{id}/create-service", post(api::monitor::agent_create_service))
@@ -92,23 +94,26 @@ async fn main() -> Result<()> {
         .route("/agent-loop", get(dashboard::agent_loop_page))
         .with_state(state.clone());
 
-    let app = Router::new()
-        .merge(api_routes)
-        .merge(dashboard_routes)
-        .layer(CorsLayer::permissive());
-
     let api_addr = std::env::var("CLAWTRADE_API_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
     let dashboard_addr = std::env::var("CLAWTRADE_DASHBOARD_ADDR").unwrap_or_else(|_| "127.0.0.1:8746".to_string());
 
     eprintln!("[clawtrade] API server starting on http://{}", api_addr);
     eprintln!("[clawtrade] Dashboard starting on http://{}", dashboard_addr);
 
+    // API server: API routes + dashboard routes (for full functionality)
+    let app = Router::new()
+        .merge(api_routes.clone())
+        .merge(dashboard_routes)
+        .layer(CorsLayer::permissive());
+
     let api_listener = tokio::net::TcpListener::bind(&api_addr).await?;
     let api_handle = tokio::spawn(async move {
         axum::serve(api_listener, app).await
     });
 
-    let dashboard_app = dashboard::dashboard_router(state.clone());
+    // Dashboard server also needs API routes for same-origin frontend calls
+    let dashboard_app = dashboard::dashboard_router(state.clone())
+        .merge(api_routes);
     let dashboard_listener = tokio::net::TcpListener::bind(&dashboard_addr).await?;
     let dashboard_handle = tokio::spawn(async move {
         axum::serve(dashboard_listener, dashboard_app).await
