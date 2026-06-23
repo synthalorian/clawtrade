@@ -79,15 +79,20 @@ impl ModelAssignment {
         std::env::var(env_key).unwrap_or_else(|_| self.default_model_name().to_string())
     }
 
-    fn default_model_name(&self) -> &'static str {
+    fn default_model_name(&self) -> String {
         match self {
-            // Generic OpenAI-compatible aliases — map these to your actual models in llama-swap
-            ModelAssignment::Qwen9B => "qwen-9b-128k",
-            ModelAssignment::Gemma12B => "gemma-12b-128k",
-            ModelAssignment::Qwen35B => "qwen-35b-128k",
-            ModelAssignment::Phi4Reasoning => "phi-4-reasoning-256k",
-            ModelAssignment::Gemma26B => "gemma-26b-256k",
-            ModelAssignment::Gemma26B512K => "gemma-26b-512k",
+            ModelAssignment::Qwen9B => std::env::var("CLAWTRADE_MODEL_QWEN9B")
+                .unwrap_or_else(|_| "synthclaw-9b-128k".to_string()),
+            ModelAssignment::Gemma12B => std::env::var("CLAWTRADE_MODEL_GEMMA12B")
+                .unwrap_or_else(|_| "synthclaw-gemma-12b-128k".to_string()),
+            ModelAssignment::Qwen35B => std::env::var("CLAWTRADE_MODEL_QWEN35B")
+                .unwrap_or_else(|_| "synthclaw-35b-128k".to_string()),
+            ModelAssignment::Phi4Reasoning => std::env::var("CLAWTRADE_MODEL_PHI4")
+                .unwrap_or_else(|_| "synthclaw-phi-4-reasoning-plus-256k".to_string()),
+            ModelAssignment::Gemma26B => std::env::var("CLAWTRADE_MODEL_GEMMA26B")
+                .unwrap_or_else(|_| "synthclaw-gemma-26b-256k".to_string()),
+            ModelAssignment::Gemma26B512K => std::env::var("CLAWTRADE_MODEL_GEMMA26B_512K")
+                .unwrap_or_else(|_| "synthclaw-gemma-26b-512k".to_string()),
         }
     }
 
