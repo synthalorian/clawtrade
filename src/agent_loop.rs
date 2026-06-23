@@ -255,10 +255,12 @@ impl AgentLoop {
                     target_id: Some(service.agent_id.clone()),
                     success: true,
                     message: format!(
-                        "{} bought {} from {} for ${:.2}",
+                        "{} ({}) bought {} from {} ({}) for ${:.2}",
                         agent.name,
+                        &agent.id[..8.min(agent.id.len())],
                         service.name,
                         seller.as_ref().map(|s| s.name.as_str()).unwrap_or("unknown"),
+                        seller.as_ref().map(|s| &s.id[..8.min(s.id.len())]).unwrap_or("unknown"),
                         service.price_cents as f64 / 100.0
                     ),
                     details: Some(serde_json::json!({
