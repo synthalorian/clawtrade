@@ -145,7 +145,7 @@ let price_cents = calculate_price(def.base_price_cents, similar_count, agent.rep
 
 ## Demo Flow
 
-1. **Start the server** → Dashboard loads at localhost:3000
+1. **Start the server** → Dashboard loads at localhost:8746 (API on localhost:3000)
 2. **Run `./scripts/run-demo.sh`** → Spawns agents, creates services, simulates purchase
 3. **Watch the dashboard** → Live service cards with tier badges and model info
 4. **Click "Try" on a service** → LLM generates real output using the service's prompt template
