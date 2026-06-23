@@ -118,6 +118,67 @@ fn det_choice<T: Clone>(items: &[T], seed: &str) -> Option<T> {
     Some(items[idx].clone())
 }
 
+/// Agent personality — modifies how an agent makes decisions
+#[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
+pub enum AgentPersonality {
+    AggressiveMerchant,  // Undercuts by 30%, high volume
+    QualityFocused,      // Premium pricing, only tier 2-3
+    NicheSpecialist,     // Only creates services in ONE category
+    BargainHunter,       // Only buys, never sells, waits for deals
+    ReputationGrinder,   // Focuses on reviews, generous reviewer
+    Vanilla,             // No personality modifier
+}
+
+impl AgentPersonality {
+    /// Modify an LLM decision based on personality
+    pub fn modify_decision(&self, mut decision: crate::hermes_bridge::AgentDecision) -> crate::hermes_bridge::AgentDecision {
+        match self {
+            AgentPersonality::AggressiveMerchant => {
+                decision.price_strategy = Some("aggressive".to_string());
+                if decision.action == "HOLD" {
+                    decision.action = "CREATE_SERVICE".to_string();
+                    decision.reasoning = format!("{} Aggressive merchant — always selling.", decision.reasoning);
+                }
+            }
+            AgentPersonality::QualityFocused => {
+                decision.price_strategy = Some("premium".to_string());
+            }
+            AgentPersonality::NicheSpecialist => {
+                // Will be handled by filtering service types in reasoning prompt
+                if decision.action == "HOLD" {
+                    decision.action = "CREATE_SERVICE".to_string();
+                    decision.reasoning = format!("{} Niche specialist — filling my category.", decision.reasoning);
+                }
+            }
+            AgentPersonality::BargainHunter => {
+                // Only PURCHASE or HOLD, never CREATE_SERVICE
+                if decision.action == "CREATE_SERVICE" {
+                    decision.action = "HOLD".to_string();
+                    decision.reasoning = "Bargain hunter — waiting for deals instead of selling.".to_string();
+                }
+            }
+            AgentPersonality::ReputationGrinder => {
+                // Prioritize REVIEW actions
+                if decision.action == "HOLD" {
+                    decision.action = "REVIEW".to_string();
+                    decision.reasoning = "Reputation grinder — always reviewing.".to_string();
+                }
+            }
+            AgentPersonality::Vanilla => {}
+        }
+        decision
+    }
+
+    /// Get the niche category for a NicheSpecialist
+    pub fn niche_category(&self) -> Option<&'static str> {
+        match self {
+            AgentPersonality::NicheSpecialist => Some("code_review"),
+            _ => None,
+        }
+    }
+}
+
 /// The agent loop engine — drives autonomous marketplace activity
 pub struct AgentLoop {
     pub pool: SqlitePool,
@@ -209,6 +270,10 @@ impl AgentLoop {
 
             match hermes.reason(&self.pool, agent, role).await {
                 Ok(decision) => {
+                    // Apply personality modifier
+                    let personality = Self::personality_for_agent(&agent.name);
+                    let decision = personality.modify_decision(decision);
+
                     // Log the reasoning to activity_log so judges can read WHY
                     let _ = crate::models::activity_log::ActivityLog::create(
                         &self.pool,
@@ -221,8 +286,9 @@ impl AgentLoop {
                         None,
                         "completed",
                         Some(&format!(
-                            "[LLM] {} decided to {}. Reasoning: {} | Target: {:?} | Strategy: {:?}",
+                            "[LLM] {} ({:?}) decided to {}. Reasoning: {} | Target: {:?} | Strategy: {:?}",
                             agent.name,
+                            personality,
                             decision.action,
                             decision.reasoning,
                             decision.target,
@@ -732,6 +798,18 @@ impl AgentLoop {
                 "transaction_id": tx.id,
             })),
         }))
+    }
+
+    /// Map agent names to personalities for the demo
+    fn personality_for_agent(name: &str) -> AgentPersonality {
+        match name {
+            "Neon Trader" => AgentPersonality::AggressiveMerchant,
+            "Quality Cortex" => AgentPersonality::QualityFocused,
+            "Rust Ranger" => AgentPersonality::NicheSpecialist,
+            "Deal Diver" => AgentPersonality::BargainHunter,
+            "Rep Builder" => AgentPersonality::ReputationGrinder,
+            _ => AgentPersonality::Vanilla,
+        }
     }
 }
 

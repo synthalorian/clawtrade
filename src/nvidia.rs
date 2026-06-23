@@ -253,6 +253,7 @@ impl LocalLlmClient {
 
     /// Chat with a specific model override. Falls back to default model if the
     /// requested one isn't available (llama-swap will return 404 for unloaded models).
+    /// Tracks inference timing and broadcasts events for the live monitor.
     pub async fn chat_with_model(
         &self,
         model: &str,
@@ -260,6 +261,18 @@ impl LocalLlmClient {
         user: &str,
         max_tokens: i32,
     ) -> Result<String> {
+        let start = std::time::Instant::now();
+        let estimated_tokens = (system.len() + user.len()) as i64 / 4;
+        let service_name = "service_delivery".to_string();
+        let tier = infer_tier_from_model(model);
+
+        // Broadcast inference started
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceStarted {
+            service_name: service_name.clone(),
+            model: model.to_string(),
+            estimated_tokens,
+        });
+
         let req = serde_json::json!({
             "model": model,
             "messages": [
@@ -279,6 +292,7 @@ impl LocalLlmClient {
 
         let status = res.status();
         let text = res.text().await?;
+        let duration_ms = start.elapsed().as_millis() as i64;
 
         if !status.is_success() {
             // Model not loaded — try to auto-load via llama-swap /v1/load-model endpoint
@@ -288,6 +302,7 @@ impl LocalLlmClient {
                     eprintln!("[llm] Auto-load failed: {}", e);
                 }
                 // Retry once after auto-load
+                let retry_start = std::time::Instant::now();
                 let retry_req = serde_json::json!({
                     "model": model,
                     "messages": [
@@ -305,27 +320,99 @@ impl LocalLlmClient {
                     .await?;
                 let retry_status = retry_res.status();
                 let retry_text = retry_res.text().await?;
+                let retry_duration_ms = retry_start.elapsed().as_millis() as i64;
                 if retry_status.is_success() {
                     let data: serde_json::Value = serde_json::from_str(&retry_text)
                         .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, retry_text))?;
-                    return Ok(data["choices"][0]["message"]["content"]
+                    let result = data["choices"][0]["message"]["content"]
                         .as_str()
                         .unwrap_or("")
-                        .to_string());
+                        .to_string();
+                    let actual_tokens = result.len() as i64 / 4;
+                    // Record inference
+                    self.record_inference(InferenceRecord {
+                        service_name: service_name.clone(),
+                        model: model.to_string(),
+                        start_time: chrono::Utc::now() - chrono::Duration::milliseconds(retry_duration_ms),
+                        end_time: Some(chrono::Utc::now()),
+                        estimated_tokens,
+                        actual_tokens: Some(actual_tokens),
+                        status: "completed".to_string(),
+                        fallback_reason: None,
+                        tier: tier.to_string(),
+                        duration_ms: retry_duration_ms,
+                    }).await;
+                    // Broadcast completed
+                    crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
+                        service_name: service_name.clone(),
+                        model: model.to_string(),
+                        actual_tokens,
+                        duration_ms: retry_duration_ms,
+                    });
+                    return Ok(result);
                 }
             }
             // Model not loaded or failed to start — fallback to default model
             eprintln!("[llm] Model {} failed ({}), falling back to {}", model, status, self.model);
+            // Record fallback
+            self.record_inference(InferenceRecord {
+                service_name: service_name.clone(),
+                model: model.to_string(),
+                start_time: chrono::Utc::now() - chrono::Duration::milliseconds(duration_ms),
+                end_time: Some(chrono::Utc::now()),
+                estimated_tokens,
+                actual_tokens: None,
+                status: "fallback".to_string(),
+                fallback_reason: Some(format!("HTTP {}", status)),
+                tier: tier.to_string(),
+                duration_ms,
+            }).await;
+            crate::websocket::broadcast_event(crate::websocket::DashboardEvent::ModelFallback {
+                requested: model.to_string(),
+                fallback_reason: format!("Model {} failed ({}), falling back to {}", model, status, self.model),
+            });
             return self.chat(system, user).await;
         }
 
         let data: serde_json::Value = serde_json::from_str(&text)
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, text))?;
 
-        Ok(data["choices"][0]["message"]["content"]
+        let result = data["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("")
-            .to_string())
+            .to_string();
+        let actual_tokens = result.len() as i64 / 4;
+
+        // Record inference
+        self.record_inference(InferenceRecord {
+            service_name: service_name.clone(),
+            model: model.to_string(),
+            start_time: chrono::Utc::now() - chrono::Duration::milliseconds(duration_ms),
+            end_time: Some(chrono::Utc::now()),
+            estimated_tokens,
+            actual_tokens: Some(actual_tokens),
+            status: "completed".to_string(),
+            fallback_reason: None,
+            tier: tier.to_string(),
+            duration_ms,
+        }).await;
+
+        // Broadcast completed
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
+            service_name: service_name.clone(),
+            model: model.to_string(),
+            actual_tokens,
+            duration_ms,
+        });
+
+        Ok(result)
+    }
+
+    /// Record an inference to the history buffer (keep last 50)
+    async fn record_inference(&self, record: InferenceRecord) {
+        // This is a no-op on LocalLlmClient since it doesn't have the history field.
+        // The LlmClient wrapper handles history. We just broadcast here.
+        let _ = record;
     }
 
     /// Auto-load a model via llama-swap's /v1/load-model endpoint
@@ -362,6 +449,21 @@ pub struct InferenceRecord {
     pub actual_tokens: Option<i64>,
     pub status: String, // "in_progress", "completed", "failed", "fallback"
     pub fallback_reason: Option<String>,
+    pub tier: String,
+    pub duration_ms: i64,
+}
+
+fn infer_tier_from_model(model: &str) -> &'static str {
+    let m = model.to_lowercase();
+    if m.contains("9b") {
+        "micro"
+    } else if m.contains("12b") || m.contains("35b") {
+        "real"
+    } else if m.contains("26b") || m.contains("reasoning") {
+        "heavy"
+    } else {
+        "local"
+    }
 }
 
 /// Unified LLM client that prefers local inference, falls back to NVIDIA cloud.
@@ -403,13 +505,60 @@ impl LlmClient {
 
     #[allow(dead_code)]
     pub async fn agent_reasoning(&self, prompt: &str) -> Result<String> {
-        if let Some(ref nvidia) = self.nvidia {
+        let start = std::time::Instant::now();
+        let estimated_tokens = prompt.len() as i64 / 4;
+        let service_name = "agent_reasoning".to_string();
+        let model = self.local.model.clone();
+        let tier = infer_tier_from_model(&model);
+
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceStarted {
+            service_name: service_name.clone(),
+            model: model.clone(),
+            estimated_tokens,
+        });
+
+        let result = if let Some(ref nvidia) = self.nvidia {
             match nvidia.agent_reasoning(prompt).await {
-                Ok(res) => return Ok(res),
-                Err(e) => eprintln!("[llm] NVIDIA fallback to local: {}", e),
+                Ok(res) => Ok(res),
+                Err(e) => {
+                    eprintln!("[llm] NVIDIA fallback to local: {}", e);
+                    self.local.chat_simple(prompt).await
+                }
+            }
+        } else {
+            self.local.chat_simple(prompt).await
+        };
+
+        let duration_ms = start.elapsed().as_millis() as i64;
+        let actual_tokens = result.as_ref().map(|r| r.len() as i64 / 4).unwrap_or(0);
+
+        {
+            let mut history = self.inference_history.lock().await;
+            history.push(InferenceRecord {
+                service_name: service_name.clone(),
+                model: model.clone(),
+                start_time: chrono::Utc::now() - chrono::Duration::milliseconds(duration_ms),
+                end_time: Some(chrono::Utc::now()),
+                estimated_tokens,
+                actual_tokens: result.as_ref().ok().map(|_| actual_tokens),
+                status: if result.is_ok() { "completed".to_string() } else { "failed".to_string() },
+                fallback_reason: None,
+                tier: tier.to_string(),
+                duration_ms,
+            });
+            if history.len() > 50 {
+                history.remove(0);
             }
         }
-        self.local.chat_simple(prompt).await
+
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
+            service_name: service_name.clone(),
+            model: model.clone(),
+            actual_tokens,
+            duration_ms,
+        });
+
+        result
     }
 
     pub async fn summarize(&self, text: &str) -> Result<String> {

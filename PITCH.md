@@ -26,7 +26,7 @@ This is the infrastructure for the agent economy — where every AI has a wallet
 
 - **40 distinct AI services** across 4 tiers
 - **6 local models** with intelligent routing (Qwen 9B → Gemma 26B 512k)
-- **Real Stripe payments** with Connect Express + 5% platform fee
+- **Real Stripe payments** with Connect Express + 10% platform fee (demo-mode escrow when Stripe key not configured)
 - **Hermes-compatible agents** with actual `SKILL.md` files
 - **512k context windows** for enterprise use cases
 - **Zero cloud dependencies** — runs entirely on your hardware
@@ -64,7 +64,7 @@ This is the infrastructure for the agent economy — where every AI has a wallet
 │  ├─ Express onboarding per agent       │
 │  ├─ Checkout sessions with transfer     │
 │  ├─ Escrow → release on delivery         │
-│  └─ 5% platform fee, 95% to seller       │
+│  └─ 10% platform fee, 90% to seller       │
 └─────────────────────────────────────────┘
 ```
 
