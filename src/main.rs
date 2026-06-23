@@ -1,8 +1,5 @@
 use anyhow::Result;
-use axum::{
-    Router,
-    routing::{get, post},
-};
+use axum::Router;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -51,63 +48,23 @@ async fn main() -> Result<()> {
     eprintln!("[clawtrade] database: {}", db_path.display());
 
     let pool = db::init_db(&db_path).await?;
+    
+    // Seed demo data if fresh database
+    let agent_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agents")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
+    if agent_count == 0 {
+        eprintln!("[clawtrade] Seeding demo agents and services...");
+        db::seed_demo_data(&pool).await?;
+    }
+
     let state = Arc::new(AppState::new(pool));
 
-    let api_routes = Router::new()
-        .route("/api/services", get(api::services::list_services).post(api::services::create_service))
-        .route("/api/services/{id}", get(api::services::get_service))
-        .route("/api/agents", get(api::agents::list_agents).post(api::agents::create_agent))
-        .route("/api/agents/{id}", get(api::agents::get_agent))
-        .route("/api/transactions", get(api::transactions::list_transactions).post(api::transactions::create_transaction))
-        .route("/api/transactions/{id}", get(api::transactions::get_transaction))
-        .route("/api/transactions/{id}/release", post(api::transactions::release_escrow))
-        .route("/api/transactions/{id}/dispute", post(api::transactions::dispute_transaction))
-        .route("/api/checkout", get(api::stripe::create_checkout))
-        .route("/api/demo/purchase", post(api::stripe::demo_purchase))
-        .route("/api/webhooks/stripe", post(api::stripe::stripe_webhook))
-        .route("/api/stripe/connect", post(api::stripe::create_connect_account))
-        .route("/api/stripe/account_link", post(api::stripe::create_account_link))
-        .route("/api/deliverables/{id}", get(api::deliverables::get_deliverable))
-        .route("/api/services/{id}/execute", post(api::deliverables::execute_service))
-        .route("/api/reviews", post(api::reviews::create_review))
-        .route("/api/agents/{id}/reviews", get(api::reviews::list_reviews))
-        .route("/api/llm/summarize", post(api::llm::summarize))
-        .route("/api/llm/analyze", post(api::llm::analyze))
-        .route("/api/v1/agents/spawn", post(api::hosting::spawn_agent))
-        .route("/api/v1/agents/{id}/status", get(api::hosting::agent_status))
-        .route("/api/v1/agents/{id}/stop", post(api::hosting::stop_agent))
-        .route("/api/v1/agents/{id}/logs", get(api::hosting::agent_logs))
-        .route("/api/v1/market/trends", get(api::pricing::market_trends))
-        .route("/api/v1/pricing/recommendations", get(api::pricing::pricing_recommendations))
-        .route("/api/v1/templates", get(api::templates::list_templates))
-        .route("/api/v1/templates/{id}", get(api::templates::get_template))
-        .route("/api/v1/templates/{id}/deploy", post(api::templates::deploy_template))
-        .route("/api/monitor/catalog", get(api::monitor::get_catalog))
-        .route("/api/monitor/demonstrate/{service_id}", get(api::monitor::demonstrate))
-        .route("/api/monitor/stats", get(api::monitor::marketplace_stats))
-        .route("/api/agents/tick", post(api::monitor::agent_tick))
-        .route("/api/agents/states", get(api::monitor::agent_states))
-        .route("/api/agents/{id}/create-service", post(api::monitor::agent_create_service))
-        .route("/api/agents/{id}/review", post(api::monitor::agent_leave_review))
-        .route("/api/activity", get(api::activity::global_activity))
-        .route("/api/activity/stats", get(api::activity::activity_stats))
-        .route("/api/activity/agent/{id}", get(api::activity::agent_activity))
-        .route("/api/activity/tx/{id}", get(api::activity::tx_activity))
-        .route("/ws", get(websocket::ws_handler))
-        .with_state(state.clone());
-
-    let dashboard_routes = Router::new()
-        .route("/", get(dashboard::index_handler))
-        .route("/services", get(dashboard::services_page))
-        .route("/agents", get(dashboard::agents_page))
-        .route("/transactions", get(dashboard::transactions_page))
-        .route("/my-purchases", get(dashboard::my_purchases_page))
-        .route("/deliverable/{id}", get(dashboard::deliverable_page))
-        .route("/success", get(dashboard::success_page))
-        .route("/cancel", get(dashboard::cancel_page))
-        .route("/monitor", get(dashboard::monitor_page))
-        .route("/agent-loop", get(dashboard::agent_loop_page))
-        .with_state(state.clone());
+    // Use centralized API routes
+    let api_routes = api::routes(state.clone());
+    
+    let dashboard_routes = dashboard::dashboard_router(state.clone());
 
     let api_addr = std::env::var("CLAWTRADE_API_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
     let dashboard_addr = std::env::var("CLAWTRADE_DASHBOARD_ADDR").unwrap_or_else(|_| "127.0.0.1:8746".to_string());
@@ -140,10 +97,10 @@ async fn main() -> Result<()> {
         axum::serve(dashboard_listener, dashboard_app).await
     });
 
-    // Auto-tick: agents trade autonomously every 30 seconds
+    // Auto-tick: agents trade autonomously every 15 seconds
     let tick_state = state.clone();
     let tick_handle = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(15));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
@@ -151,11 +108,10 @@ async fn main() -> Result<()> {
             match loop_engine.tick().await {
                 Ok(results) => {
                     if !results.is_empty() {
-                        let summary: Vec<String> = results.iter().map(|r| format!("{}: {}", r.interaction_type, r.message)).collect();
-                        eprintln!("[autotick] {} actions: {}", results.len(), summary.join(" | "));
+                        eprintln!("[agent_loop] {} interactions", results.len());
                     }
                 }
-                Err(e) => eprintln!("[autotick] error: {}", e),
+                Err(e) => eprintln!("[agent_loop] tick failed: {}", e),
             }
         }
     });
