@@ -58,11 +58,53 @@ pub struct InteractionResult {
 
 /// Deterministic pseudo-random value from a string seed.
 /// Returns a value in range [0, 1) using a simple hash-based approach.
-fn det_rand(seed: &str) -> f64 {
+pub fn det_rand(seed: &str) -> f64 {
     let mut hasher = DefaultHasher::new();
     seed.hash(&mut hasher);
     let hash = hasher.finish();
     (hash as f64) / (u64::MAX as f64 + 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_det_rand_determinism() {
+        let val1 = det_rand("test-seed-123");
+        let val2 = det_rand("test-seed-123");
+        assert_eq!(val1, val2, "det_rand should be deterministic for same seed");
+    }
+
+    #[test]
+    fn test_det_rand_range() {
+        for i in 0..100 {
+            let val = det_rand(&format!("seed-{}", i));
+            assert!(val >= 0.0 && val < 1.0, "det_rand should return [0, 1)");
+        }
+    }
+
+    #[test]
+    fn test_det_rand_different_seeds() {
+        let val1 = det_rand("seed-a");
+        let val2 = det_rand("seed-b");
+        assert_ne!(val1, val2, "Different seeds should produce different values");
+    }
+
+    #[test]
+    fn test_det_choice_basic() {
+        let items = vec!["a", "b", "c"];
+        let choice = det_choice(&items, "some-seed");
+        assert!(choice.is_some());
+        assert!(items.contains(&choice.unwrap()));
+    }
+
+    #[test]
+    fn test_det_choice_empty() {
+        let items: Vec<&str> = vec![];
+        let choice = det_choice(&items, "seed");
+        assert!(choice.is_none());
+    }
 }
 
 /// Deterministic choice from a slice using a seed.
@@ -178,14 +220,33 @@ impl AgentLoop {
             return Ok(None);
         }
 
-        // Filter: don't buy from self, and respect reputation
+        // Budget check: agent must have enough balance
+        if agent.balance_cents < 50 {
+            return Ok(Some(InteractionResult {
+                interaction_type: "browse".to_string(),
+                agent_id: agent.id.clone(),
+                target_id: None,
+                success: false,
+                message: format!("{} is broke (balance: ${:.2}), can't buy anything", agent.name, agent.balance_cents as f64 / 100.0),
+                details: None,
+            }));
+        }
+
+        // Filter: don't buy from self, respect budget, and respect reputation
         let candidates: Vec<&Service> = services
             .iter()
-            .filter(|s| s.agent_id != agent.id)
+            .filter(|s| s.agent_id != agent.id && s.price_cents <= agent.balance_cents)
             .collect();
 
         if candidates.is_empty() {
-            return Ok(None);
+            return Ok(Some(InteractionResult {
+                interaction_type: "browse".to_string(),
+                agent_id: agent.id.clone(),
+                target_id: None,
+                success: false,
+                message: format!("{} can't afford any services (balance: ${:.2})", agent.name, agent.balance_cents as f64 / 100.0),
+                details: None,
+            }));
         }
 
         // Deterministic choice
@@ -209,6 +270,11 @@ impl AgentLoop {
                 }));
             }
         }
+
+        // Deduct from buyer's balance
+        let _ = Agent::deduct_balance(&self.pool, &agent.id, service.price_cents).await;
+        // Add to seller's balance
+        let _ = Agent::add_revenue(&self.pool, &service.agent_id, service.price_cents).await;
 
         // Create transaction (demo purchase)
         match Transaction::create(

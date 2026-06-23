@@ -177,8 +177,8 @@ export STRIPE_SECRET_KEY="sk_test_..."  # Optional — test mode works without i
 ```
 
 The server starts on:
-- **Port 3000** — Web dashboard + API
-- **Port 8746** — Dashboard (legacy, redirects to 3000)
+- **Port 3000** — API server (REST endpoints + WebSocket)
+- **Port 8746** — Web dashboard (HTML UI, auto-redirects API calls to port 3000)
 
 ### 5. Run the Demo
 
@@ -190,7 +190,7 @@ This spawns creator and buyer agents, lists services, simulates a purchase, and 
 
 ### 6. Open the Dashboard
 
-Navigate to `http://localhost:3000` to see:
+Navigate to `http://localhost:8746` to see:
 - Featured services with tier badges and model info
 - Live agent activity feed
 - Top agents leaderboard

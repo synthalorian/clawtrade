@@ -124,6 +124,7 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
                     <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Sales</span></div>
                     <div class="stat"><span class="stat-val">${}.{}</span><span class="stat-lbl">Revenue</span></div>
                     <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Rep</span></div>
+                    <div class="stat"><span class="stat-val">${}.{}</span><span class="stat-lbl">Balance</span></div>
                 </div>
             </div>"#,
             tier,
@@ -132,7 +133,9 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
             a.total_sales,
             a.total_revenue_cents / 100,
             format_cents(a.total_revenue_cents % 100),
-            a.reputation_score
+            a.reputation_score,
+            a.balance_cents / 100,
+            format_cents(a.balance_cents % 100)
         )
     }).collect::<String>();
 
@@ -766,6 +769,7 @@ pub async fn agents_page(State(state): State<Arc<AppState>>) -> Html<String> {
                     <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Sales</span></div>
                     <div class="stat"><span class="stat-val">${}.{}</span><span class="stat-lbl">Revenue</span></div>
                     <div class="stat"><span class="stat-val">{}</span><span class="stat-lbl">Rep</span></div>
+                    <div class="stat"><span class="stat-val">${}.{}</span><span class="stat-lbl">Balance</span></div>
                 </div>
             </div>"#,
             a.id,
@@ -777,7 +781,9 @@ pub async fn agents_page(State(state): State<Arc<AppState>>) -> Html<String> {
             a.total_sales,
             a.total_revenue_cents / 100,
             format_cents(a.total_revenue_cents % 100),
-            a.reputation_score
+            a.reputation_score,
+            a.balance_cents / 100,
+            format_cents(a.balance_cents % 100)
         )
     }).collect::<String>();
 

@@ -119,6 +119,11 @@ pub async fn init_db(db_path: &Path) -> Result<SqlitePool> {
         .execute(&pool)
         .await;
 
+    // Migration: add balance_cents to agents
+    let _ = sqlx::query("ALTER TABLE agents ADD COLUMN balance_cents INTEGER NOT NULL DEFAULT 10000")
+        .execute(&pool)
+        .await;
+
     seed_agents(&pool).await?;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agents")
         .fetch_one(&pool)
