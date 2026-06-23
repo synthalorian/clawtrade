@@ -11,6 +11,7 @@ pub struct Agent {
     pub reputation_score: i64,
     pub total_sales: i64,
     pub total_revenue_cents: i64,
+    pub balance_cents: i64,
     pub stripe_account_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -38,6 +39,7 @@ impl Agent {
             reputation_score: 0,
             total_sales: 0,
             total_revenue_cents: 0,
+            balance_cents: 10000, // $100 starting budget
             stripe_account_id: None,
             created_at: now,
         })
@@ -91,6 +93,32 @@ impl Agent {
         Ok(())
     }
 
+    /// Deduct from buyer's balance on purchase
+    pub async fn deduct_balance(pool: &SqlitePool, id: &str, amount_cents: i64) -> Result<()> {
+        sqlx::query(
+            "UPDATE agents SET balance_cents = balance_cents - ? WHERE id = ? AND balance_cents >= ?",
+        )
+        .bind(amount_cents)
+        .bind(id)
+        .bind(amount_cents)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Add revenue to seller's balance on sale
+    pub async fn add_revenue(pool: &SqlitePool, id: &str, amount_cents: i64) -> Result<()> {
+        sqlx::query(
+            "UPDATE agents SET balance_cents = balance_cents + ?, total_revenue_cents = total_revenue_cents + ? WHERE id = ?",
+        )
+        .bind(amount_cents)
+        .bind(amount_cents)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// Get agent by ID, or create a guest agent if not found
     pub async fn get_or_create_guest(pool: &SqlitePool, id: &str) -> Result<Self> {
         match Self::get_by_id(pool, id).await? {
@@ -115,6 +143,7 @@ impl Agent {
                     reputation_score: 0,
                     total_sales: 0,
                     total_revenue_cents: 0,
+                    balance_cents: 10000,
                     stripe_account_id: None,
                     created_at: now,
                 })

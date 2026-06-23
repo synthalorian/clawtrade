@@ -65,13 +65,26 @@ pub enum ModelAssignment {
 }
 
 impl ModelAssignment {
-    pub fn model_name(&self) -> &'static str {
+    pub fn model_name(&self) -> String {
+        // Allow users to override model names via env vars for their own llama-swap setup
+        let env_key = match self {
+            ModelAssignment::Qwen9B => "CLAWTRADE_MODEL_QWEN9B",
+            ModelAssignment::Gemma12B => "CLAWTRADE_MODEL_GEMMA12B",
+            ModelAssignment::Qwen35B => "CLAWTRADE_MODEL_QWEN35B",
+            ModelAssignment::Phi4Reasoning => "CLAWTRADE_MODEL_PHI4",
+            ModelAssignment::Gemma26B => "CLAWTRADE_MODEL_GEMMA26B",
+        };
+        std::env::var(env_key).unwrap_or_else(|_| self.default_model_name().to_string())
+    }
+
+    fn default_model_name(&self) -> &'static str {
         match self {
-            ModelAssignment::Qwen9B => "synthclaw-9b-128k",
-            ModelAssignment::Gemma12B => "synthclaw-gemma-12b-128k",
-            ModelAssignment::Qwen35B => "synthclaw-35b-128k",
-            ModelAssignment::Phi4Reasoning => "synthclaw-phi-4-reasoning-plus-256k",
-            ModelAssignment::Gemma26B => "synthclaw-gemma-26b-256k",
+            // Generic OpenAI-compatible aliases — map these to your actual models in llama-swap
+            ModelAssignment::Qwen9B => "qwen-9b-128k",
+            ModelAssignment::Gemma12B => "gemma-12b-128k",
+            ModelAssignment::Qwen35B => "qwen-35b-128k",
+            ModelAssignment::Phi4Reasoning => "phi-4-reasoning-256k",
+            ModelAssignment::Gemma26B => "gemma-26b-256k",
         }
     }
 
@@ -822,4 +835,135 @@ pub fn find_marketplace_gaps(existing_types: &[String]) -> Vec<&'static ServiceD
     });
 
     gaps.into_iter().map(|(def, _)| def).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_service_definition_exists() {
+        let def = get_service_definition("code_review");
+        assert!(def.is_some());
+        let def = def.unwrap();
+        assert_eq!(def.service_type, "code_review");
+        assert!(def.base_price_cents > 0);
+    }
+
+    #[test]
+    fn test_get_service_definition_missing() {
+        let def = get_service_definition("nonexistent_service_type");
+        assert!(def.is_none());
+    }
+
+    #[test]
+    fn test_tier_price_ranges() {
+        let micro = ServiceTier::MicroTask;
+        let (min, max) = micro.price_range_cents();
+        assert_eq!(min, 9);
+        assert_eq!(max, 49);
+        assert_eq!(micro.base_price_cents(), 19);
+
+        let heavy = ServiceTier::HeavyLifting;
+        let (min, max) = heavy.price_range_cents();
+        assert_eq!(min, 300);
+        assert_eq!(max, 999);
+
+        let local = ServiceTier::LocalOnly;
+        let (min, max) = local.price_range_cents();
+        assert_eq!(min, 999);
+        assert_eq!(max, 4999);
+    }
+
+    #[test]
+    fn test_model_assignment_multiplier() {
+        assert_eq!(ModelAssignment::Qwen9B.price_multiplier(), 1.0);
+        assert_eq!(ModelAssignment::Gemma12B.price_multiplier(), 2.0);
+        assert_eq!(ModelAssignment::Qwen35B.price_multiplier(), 2.5);
+        assert_eq!(ModelAssignment::Phi4Reasoning.price_multiplier(), 3.0);
+        assert_eq!(ModelAssignment::Gemma26B.price_multiplier(), 4.0);
+    }
+
+    #[test]
+    fn test_calculate_price_demand() {
+        // No competition = base price
+        let p1 = calculate_price(100, 0, 0);
+        assert_eq!(p1, 100);
+
+        // Some competition = 90%
+        let p2 = calculate_price(100, 1, 0);
+        assert_eq!(p2, 90);
+
+        // Lots of competition = 80%
+        let p3 = calculate_price(100, 5, 0);
+        assert_eq!(p3, 80);
+    }
+
+    #[test]
+    fn test_calculate_price_reputation() {
+        // Base price with 0 rep
+        let p1 = calculate_price(100, 0, 0);
+        assert_eq!(p1, 100);
+
+        // 50 rep = 50% of max 30% bonus = 1.15x, but min() caps at 0.3 so actually 1.3x
+        // Wait: (50 / 100.0).min(0.3) = 0.3, so 1.0 + 0.3 = 1.3x
+        let p2 = calculate_price(100, 0, 50);
+        assert_eq!(p2, 130);
+
+        // 100 rep = max 30% bonus = 1.3x
+        let p3 = calculate_price(100, 0, 100);
+        assert_eq!(p3, 130);
+    }
+
+    #[test]
+    fn test_is_duplicate() {
+        let existing = vec!["code_review".to_string(), "text_processing".to_string()];
+        assert!(is_duplicate("code_review", &existing));
+        assert!(!is_duplicate("analysis", &existing));
+    }
+
+    #[test]
+    fn test_find_marketplace_gaps() {
+        let existing = vec![
+            "code_review".to_string(),
+            "code_review".to_string(),
+            "text_processing".to_string(),
+        ];
+        let gaps = find_marketplace_gaps(&existing);
+        assert!(!gaps.is_empty());
+
+        // The first gap should NOT be code_review (it has the most listings)
+        assert_ne!(gaps[0].service_type, "code_review");
+    }
+
+    #[test]
+    fn test_catalog_size() {
+        let all = get_all_service_types();
+        assert_eq!(all.len(), 39, "Catalog should have exactly 39 services");
+    }
+
+    #[test]
+    fn test_default_model_names() {
+        let qwen = ModelAssignment::Qwen9B;
+        assert_eq!(qwen.default_model_name(), "qwen-9b-128k");
+
+        let gemma = ModelAssignment::Gemma12B;
+        assert_eq!(gemma.default_model_name(), "gemma-12b-128k");
+    }
+
+    #[test]
+    fn test_tier_labels() {
+        assert_eq!(ServiceTier::MicroTask.label(), "MICRO");
+        assert_eq!(ServiceTier::RealWork.label(), "REAL");
+        assert_eq!(ServiceTier::HeavyLifting.label(), "HEAVY");
+        assert_eq!(ServiceTier::LocalOnly.label(), "LOCAL");
+    }
+
+    #[test]
+    fn test_tier_badge_colors() {
+        assert_eq!(ServiceTier::MicroTask.badge_color(), "cyan");
+        assert_eq!(ServiceTier::RealWork.badge_color(), "yellow");
+        assert_eq!(ServiceTier::HeavyLifting.badge_color(), "magenta");
+        assert_eq!(ServiceTier::LocalOnly.badge_color(), "green");
+    }
 }

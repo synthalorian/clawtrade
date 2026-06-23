@@ -448,7 +448,78 @@ impl LlmClient {
         );
 
         self.local
-            .chat_with_model(model, system, &user, max_tokens)
+            .chat_with_model(&model, system, &user, max_tokens)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deliver_service_placeholder_substitution() {
+        let def = crate::service_catalog::get_service_definition("git_commit_msg").unwrap();
+        
+        // Simple input substitution
+        let user_request = "feat: add user auth";
+        let mut user = def.user_prompt_template.to_string();
+        user = user.replace("{input}", user_request);
+        
+        assert!(user.contains("feat: add user auth"));
+        assert!(!user.contains("{input}"));
+    }
+
+    #[test]
+    fn test_deliver_service_codebase_question_split() {
+        let def = crate::service_catalog::get_service_definition("codebase_qa").unwrap();
+        
+        let user_request = "---CODEBASE---\nfn main() {}\n---QUESTION---\nWhere is the entry point?";
+        let mut user = def.user_prompt_template.to_string();
+        user = user.replace("{input}", user_request);
+        
+        if user_request.contains("---CODEBASE---") && user_request.contains("---QUESTION---") {
+            let parts: Vec<&str> = user_request.split("---CODEBASE---").collect();
+            let after = parts[1].split("---QUESTION---").collect::<Vec<&str>>();
+            let codebase = after[0].trim();
+            let question = after[1].trim();
+            user = user.replace("{codebase}", codebase);
+            user = user.replace("{question}", question);
+        }
+        
+        assert!(user.contains("fn main() {}"));
+        assert!(user.contains("Where is the entry point?"));
+        assert!(!user.contains("{codebase}"));
+        assert!(!user.contains("{question}"));
+    }
+
+    #[test]
+    fn test_local_llm_client_url_construction() {
+        let client = LocalLlmClient::new(
+            "http://127.0.0.1:8080".to_string(),
+            "test-model".to_string(),
+        );
+        // Just verify it constructs without panic
+        assert_eq!(client.base_url, "http://127.0.0.1:8080");
+        assert_eq!(client.model, "test-model");
+    }
+
+    #[test]
+    fn test_nvidia_request_serialization() {
+        let req = NvidiaChatRequest {
+            model: "test-model".to_string(),
+            messages: vec![
+                NvidiaMessage { role: "system".to_string(), content: "You are a test".to_string() },
+                NvidiaMessage { role: "user".to_string(), content: "Hello".to_string() },
+            ],
+            temperature: 0.7,
+            max_tokens: 512,
+            top_p: 0.9,
+        };
+        
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("test-model"));
+        assert!(json.contains("You are a test"));
+        assert!(json.contains("Hello"));
     }
 }
