@@ -5,7 +5,6 @@
 //! Tier 3: Heavy Lifting ($3.00-$9.99) — Gemma 26B 256k/512k / Phi-4 Reasoning+ 256k
 //! Tier 4: Local-Only Superpowers ($9.99-$49.99) — Massive context, uncensored, bulk, custom models
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// Service tier determines pricing and model routing
@@ -763,11 +762,13 @@ pub fn get_service_definition(service_type: &str) -> Option<&'static ServiceDefi
 }
 
 /// Get all service types for a given tier
+#[allow(dead_code)]
 pub fn get_services_by_tier(tier: ServiceTier) -> Vec<&'static ServiceDefinition> {
     SERVICE_CATALOG.iter().filter(|s| s.tier == tier).collect()
 }
 
 /// Get all service types as strings
+#[allow(dead_code)]
 pub fn get_all_service_types() -> Vec<&'static str> {
     SERVICE_CATALOG.iter().map(|s| s.service_type).collect()
 }

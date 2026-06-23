@@ -5,11 +5,11 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::review::Review;
 use crate::models::transaction::Transaction;
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateReviewRequest {
@@ -28,7 +28,7 @@ pub struct ReviewListResponse {
 }
 
 pub async fn create_review(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<CreateReviewRequest>,
 ) -> impl IntoResponse {
     // Validate rating
@@ -40,7 +40,7 @@ pub async fn create_review(
     }
 
     // Verify transaction exists and is paid
-    match Transaction::get_by_id(&pool, &req.transaction_id).await {
+    match Transaction::get_by_id(&state.pool, &req.transaction_id).await {
         Ok(Some(tx)) => {
             if tx.status != "paid" && tx.status != "released" && tx.status != "escrow" {
                 return (
@@ -64,7 +64,7 @@ pub async fn create_review(
     }
 
     match Review::create(
-        &pool,
+        &state.pool,
         &req.transaction_id,
         &req.agent_id,
         req.rating,
@@ -84,10 +84,10 @@ pub async fn create_review(
 }
 
 pub async fn list_reviews(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    let reviews = match Review::list_by_agent(&pool, &agent_id).await {
+    let reviews = match Review::list_by_agent(&state.pool, &agent_id).await {
         Ok(r) => r,
         Err(e) => {
             return (
@@ -97,12 +97,12 @@ pub async fn list_reviews(
         }
     };
 
-    let avg = match Review::get_average_rating(&pool, &agent_id).await {
+    let avg = match Review::get_average_rating(&state.pool, &agent_id).await {
         Ok(a) => a,
         Err(_) => None,
     };
 
-    let total = match Review::count_by_agent(&pool, &agent_id).await {
+    let total = match Review::count_by_agent(&state.pool, &agent_id).await {
         Ok(c) => c,
         Err(_) => 0,
     };

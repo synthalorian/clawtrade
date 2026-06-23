@@ -5,10 +5,10 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::transaction::Transaction;
+use crate::AppState;
 
 #[derive(Debug, Serialize)]
 #[allow(dead_code)]
@@ -24,8 +24,8 @@ pub struct CreateTransactionRequest {
     pub amount_cents: i64,
 }
 
-pub async fn list_transactions(State(pool): State<Arc<SqlitePool>>) -> impl IntoResponse {
-    match Transaction::list(&pool).await {
+pub async fn list_transactions(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match Transaction::list(&state.pool).await {
         Ok(transactions) => (
             StatusCode::OK,
             Json(serde_json::json!({ "transactions": transactions })),
@@ -38,10 +38,10 @@ pub async fn list_transactions(State(pool): State<Arc<SqlitePool>>) -> impl Into
 }
 
 pub async fn get_transaction(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match Transaction::get_by_id(&pool, &id).await {
+    match Transaction::get_by_id(&state.pool, &id).await {
         Ok(Some(tx)) => {
             (StatusCode::OK, Json(serde_json::json!({ "transaction": tx })))
         }
@@ -57,11 +57,30 @@ pub async fn get_transaction(
 }
 
 pub async fn create_transaction(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<CreateTransactionRequest>,
 ) -> impl IntoResponse {
+    if req.amount_cents <= 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "amount_cents must be greater than 0" })),
+        );
+    }
+    if req.amount_cents > 50000 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "amount_cents cannot exceed $500.00" })),
+        );
+    }
+    if req.buyer_id == req.seller_id {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "buyer and seller cannot be the same" })),
+        );
+    }
+
     match Transaction::create(
-        &pool,
+        &state.pool,
         &req.service_id,
         &req.buyer_id,
         &req.seller_id,
@@ -88,10 +107,10 @@ pub async fn create_transaction(
 }
 
 pub async fn release_escrow(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match Transaction::get_by_id(&pool, &id).await {
+    match Transaction::get_by_id(&state.pool, &id).await {
         Ok(Some(tx)) => {
             if tx.status != "escrow" {
                 return (
@@ -103,7 +122,7 @@ pub async fn release_escrow(
             // Real Stripe Connect transfer: move funds from platform to seller
             let stripe_secret = std::env::var("STRIPE_SECRET_KEY").ok();
             if let (Some(secret), Some(_stripe_session_id)) = (stripe_secret, &tx.stripe_session_id) {
-                let seller = match crate::models::agent::Agent::get_by_id(&pool, &tx.seller_id).await {
+                let seller = match crate::models::agent::Agent::get_by_id(&state.pool, &tx.seller_id).await {
                     Ok(Some(a)) => a,
                     _ => {
                         return (
@@ -134,7 +153,7 @@ pub async fn release_escrow(
                         Ok(res) => {
                             if let Ok(data) = res.json::<serde_json::Value>().await {
                                 if let Some(transfer_id) = data["id"].as_str() {
-                                    let _ = Transaction::update_stripe_transfer(&pool, &id, transfer_id).await;
+                                    let _ = Transaction::update_stripe_transfer(&state.pool, &id, transfer_id).await;
                                 }
                             }
                         }
@@ -146,7 +165,7 @@ pub async fn release_escrow(
                 }
             }
 
-            match Transaction::release_escrow(&pool, &id).await {
+            match Transaction::release_escrow(&state.pool, &id).await {
                 Ok(()) => (
                     StatusCode::OK,
                     Json(serde_json::json!({"status": "released", "transaction_id": id})),
@@ -169,10 +188,10 @@ pub async fn release_escrow(
 }
 
 pub async fn dispute_transaction(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match Transaction::get_by_id(&pool, &id).await {
+    match Transaction::get_by_id(&state.pool, &id).await {
         Ok(Some(tx)) => {
             if tx.status != "escrow" {
                 return (
@@ -180,7 +199,7 @@ pub async fn dispute_transaction(
                     Json(serde_json::json!({"error": "transaction is not in escrow"})),
                 );
             }
-            match Transaction::dispute_transaction(&pool, &id).await {
+            match Transaction::dispute_transaction(&state.pool, &id).await {
                 Ok(()) => (
                     StatusCode::OK,
                     Json(serde_json::json!({"status": "disputed", "transaction_id": id})),

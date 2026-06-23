@@ -2,6 +2,9 @@
 //!
 //! Each service type maps to a specific LLM prompt that generates
 //! real, useful content based on the service description and buyer input.
+//! Legacy delivery functions are kept for fallback.
+
+#![allow(dead_code)]
 
 use anyhow::Result;
 use sqlx::SqlitePool;
@@ -87,6 +90,7 @@ pub async fn trigger_delivery(pool: &SqlitePool, transaction_id: &str) -> Result
 /// This is the primary service delivery engine for ClawTrade v2.0.
 pub async fn execute_service_direct(
     pool: &SqlitePool,
+    llm: &crate::nvidia::LlmClient,
     service_id: &str,
     user_input: &str,
 ) -> Result<String> {
@@ -109,11 +113,10 @@ pub async fn execute_service_direct(
         }
     };
 
-    // Build the LLM client and deliver using the catalog's prompt template + model routing
-    let client = LlmClient::new();
+    // Deliver using the shared LLM client + catalog's prompt template + model routing
     let start = std::time::Instant::now();
 
-    match client.deliver_service(def, user_input).await {
+    match llm.deliver_service(def, user_input).await {
         Ok(result) => {
             let execution_time_ms = start.elapsed().as_millis() as u64;
             let model_name = def.model.model_name();
@@ -146,6 +149,7 @@ pub async fn execute_service_direct(
 
 // ─── TEXT PROCESSING ───
 
+#[allow(dead_code)]
 async fn deliver_text_processing(service: &Service, _tx: &Transaction) -> Result<String> {
     let client = LlmClient::new();
     

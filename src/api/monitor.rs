@@ -1,17 +1,17 @@
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::{extract::Path, http::StatusCode, Json};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::agent_loop::AgentLoop;
 use crate::monitor::{generate_catalog, demonstrate_service};
+use crate::AppState;
 
 /// GET /api/monitor/catalog — Live service catalog with demonstrations
 pub async fn get_catalog(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    match generate_catalog(&pool).await {
+    match generate_catalog(&state.pool).await {
         Ok(catalog) => (StatusCode::OK, Json(serde_json::json!({ "catalog": catalog }))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -22,10 +22,10 @@ pub async fn get_catalog(
 
 /// GET /api/monitor/demonstrate/:service_id — Demonstrate a specific service
 pub async fn demonstrate(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(service_id): Path<String>,
 ) -> impl IntoResponse {
-    match demonstrate_service(&pool, &service_id).await {
+    match demonstrate_service(&state.pool, &service_id).await {
         Ok(demo) => (StatusCode::OK, Json(serde_json::json!({ "demo": demo }))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -36,9 +36,9 @@ pub async fn demonstrate(
 
 /// POST /api/agents/tick — Run one tick of the agent loop
 pub async fn agent_tick(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(pool);
+    let loop_engine = AgentLoop::new(state);
     
     match loop_engine.tick().await {
         Ok(results) => {
@@ -70,10 +70,10 @@ pub async fn agent_tick(
 
 /// POST /api/agents/:id/create-service — Agent creates a service
 pub async fn agent_create_service(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(pool);
+    let loop_engine = AgentLoop::new(state);
     
     match loop_engine.agent_create_service(&agent_id).await {
         Ok(Some(result)) => (
@@ -97,10 +97,10 @@ pub async fn agent_create_service(
 
 /// POST /api/agents/:id/review — Agent leaves a review
 pub async fn agent_leave_review(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(pool);
+    let loop_engine = AgentLoop::new(state);
     
     match loop_engine.agent_leave_review(&agent_id).await {
         Ok(Some(result)) => (
@@ -124,39 +124,39 @@ pub async fn agent_leave_review(
 
 /// GET /api/monitor/stats — Marketplace analytics
 pub async fn marketplace_stats(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     let total_revenue: i64 = sqlx::query_scalar(
         "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE status = 'paid' OR status = 'released'"
     )
-    .fetch_one(&*pool)
+    .fetch_one(&state.pool)
     .await
     .unwrap_or(0);
 
     let total_transactions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions")
-        .fetch_one(&*pool)
+        .fetch_one(&state.pool)
         .await
         .unwrap_or(0);
 
     let total_services: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM services WHERE status = 'active'")
-        .fetch_one(&*pool)
+        .fetch_one(&state.pool)
         .await
         .unwrap_or(0);
 
     let total_services_all: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM services")
-        .fetch_one(&*pool)
+        .fetch_one(&state.pool)
         .await
         .unwrap_or(0);
 
     let total_agents: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agents")
-        .fetch_one(&*pool)
+        .fetch_one(&state.pool)
         .await
         .unwrap_or(0);
 
     let tier_counts: Vec<(String, i64)> = sqlx::query_as(
         "SELECT service_type, COUNT(*) as cnt FROM services WHERE status = 'active' GROUP BY service_type"
     )
-    .fetch_all(&*pool)
+    .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
 
@@ -182,7 +182,7 @@ pub async fn marketplace_stats(
     let top_agents: Vec<(String, String, i64, i64)> = sqlx::query_as(
         "SELECT id, name, total_sales, total_revenue_cents FROM agents ORDER BY total_revenue_cents DESC LIMIT 5"
     )
-    .fetch_all(&*pool)
+    .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
 
@@ -192,7 +192,7 @@ pub async fn marketplace_stats(
          JOIN services s ON t.service_id = s.id 
          ORDER BY t.created_at DESC LIMIT 10"
     )
-    .fetch_all(&*pool)
+    .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
 
@@ -229,9 +229,9 @@ pub async fn marketplace_stats(
 
 /// GET /api/agents/states — Get current agent states
 pub async fn agent_states(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(pool);
+    let loop_engine = AgentLoop::new(state);
     
     let agent_states = match loop_engine.get_states().await {
         Ok(s) => s,
