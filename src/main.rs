@@ -5,6 +5,7 @@ use axum::{
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 
 mod agent_loop;
@@ -22,13 +23,17 @@ mod websocket;
 pub struct AppState {
     pub pool: SqlitePool,
     pub llm: Arc<nvidia::LlmClient>,
+    pub agent_loop: Arc<Mutex<agent_loop::AgentLoop>>,
 }
 
 impl AppState {
     pub fn new(pool: SqlitePool) -> Self {
+        let llm = Arc::new(nvidia::LlmClient::new());
+        let agent_loop = Arc::new(Mutex::new(agent_loop::AgentLoop::new(pool.clone())));
         Self {
             pool,
-            llm: Arc::new(nvidia::LlmClient::new()),
+            llm,
+            agent_loop,
         }
     }
 }
@@ -142,7 +147,7 @@ async fn main() -> Result<()> {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            let loop_engine = crate::agent_loop::AgentLoop::new(tick_state.clone());
+            let loop_engine = tick_state.agent_loop.lock().await;
             match loop_engine.tick().await {
                 Ok(results) => {
                     if !results.is_empty() {

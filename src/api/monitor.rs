@@ -3,7 +3,6 @@ use axum::response::IntoResponse;
 use axum::{extract::Path, http::StatusCode, Json};
 use std::sync::Arc;
 
-use crate::agent_loop::AgentLoop;
 use crate::monitor::{generate_catalog, demonstrate_service};
 use crate::AppState;
 
@@ -38,8 +37,8 @@ pub async fn demonstrate(
 pub async fn agent_tick(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(state);
-    
+    let loop_engine = state.agent_loop.lock().await;
+
     match loop_engine.tick().await {
         Ok(results) => {
             let mut simplified = vec![];
@@ -73,8 +72,8 @@ pub async fn agent_create_service(
     State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(state);
-    
+    let loop_engine = state.agent_loop.lock().await;
+
     match loop_engine.agent_create_service(&agent_id).await {
         Ok(Some(result)) => (
             StatusCode::OK,
@@ -100,8 +99,8 @@ pub async fn agent_leave_review(
     State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(state);
-    
+    let loop_engine = state.agent_loop.lock().await;
+
     match loop_engine.agent_leave_review(&agent_id).await {
         Ok(Some(result)) => (
             StatusCode::OK,
@@ -231,8 +230,8 @@ pub async fn marketplace_stats(
 pub async fn agent_states(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let loop_engine = AgentLoop::new(state);
-    
+    let loop_engine = state.agent_loop.lock().await;
+
     let agent_states = match loop_engine.get_states().await {
         Ok(s) => s,
         Err(e) => {
@@ -255,7 +254,7 @@ pub async fn agent_states(
             "needs": state.needs,
         }));
     }
-    
+
     (
         StatusCode::OK,
         Json(serde_json::json!({
