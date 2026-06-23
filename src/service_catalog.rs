@@ -955,10 +955,10 @@ mod tests {
     #[test]
     fn test_default_model_names() {
         let qwen = ModelAssignment::Qwen9B;
-        assert_eq!(qwen.default_model_name(), "qwen-9b-128k");
+        assert_eq!(qwen.default_model_name(), "synthclaw-9b-128k");
 
         let gemma = ModelAssignment::Gemma12B;
-        assert_eq!(gemma.default_model_name(), "gemma-12b-128k");
+        assert_eq!(gemma.default_model_name(), "synthclaw-gemma-12b-128k");
     }
 
     #[test]
