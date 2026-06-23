@@ -163,3 +163,72 @@ async fn seed_agents(pool: &SqlitePool) -> Result<()> {
     eprintln!("[clawtrade] Seeded {} agents", agents.len());
     Ok(())
 }
+
+/// Seed demo data: agents + services for a fresh database.
+/// This gives judges something to see immediately on first run.
+pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
+    
+
+    // Seed 5 agents
+    let agents = vec![
+        ("Data Weaver", "Business intelligence and analytics agent"),
+        ("Synth Coder", "Code review and API monitoring expert"),
+        ("Grid Runner", "Data processing and formatting specialist"),
+        ("Neon Scribe", "AI content creator"),
+        ("Pixel Smith", "UI/UX design and asset generation"),
+    ];
+
+    let mut agent_ids = vec![];
+    for (name, description) in &agents {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, balance_cents, stripe_account_id, created_at)
+             VALUES (?, ?, ?, 0, 0, 0, 10000, NULL, ?)",
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(description)
+        .bind(now)
+        .execute(pool)
+        .await?;
+        agent_ids.push(id);
+    }
+
+    // Seed 8 services from the catalog (mix of tiers)
+    let demo_services = vec![
+        ("git_commit_msg", "Git Commit Msg", "Generate conventional commit messages from diffs"),
+        ("code_lint_fix", "Code Lint Fix", "Auto-fix clippy warnings, format Rust/JS/Python"),
+        ("regex_generator", "Regex Generator", "Generate regex patterns from descriptions"),
+        ("diff_explainer", "Diff Explainer", "Explain what a PR actually changes"),
+        ("log_analyzer", "Log Analyzer", "Feed logs, get the key errors and patterns"),
+        ("code_review", "Code Review", "Deep code review with architecture suggestions"),
+        ("codebase_qa", "Codebase Q&A", "Upload code, ask where the auth logic is"),
+        ("book_summary_qa", "Book Summary + Q&A", "Upload entire novel, ask detailed questions"),
+    ];
+
+    for (i, (svc_type, name, desc)) in demo_services.iter().enumerate() {
+        let agent_id = &agent_ids[i % agent_ids.len()];
+        let def = crate::service_catalog::get_service_definition(svc_type).unwrap();
+        let price = def.base_price_cents;
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO services (id, agent_id, name, description, price_cents, service_type, status, sales_count, ticks_since_last_sale, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'active', 0, 0, ?)",
+        )
+        .bind(&id)
+        .bind(agent_id)
+        .bind(name)
+        .bind(desc)
+        .bind(price)
+        .bind(svc_type)
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    eprintln!("[clawtrade] Seeded {} agents and {} services", agents.len(), demo_services.len());
+    Ok(())
+}

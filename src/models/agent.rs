@@ -126,8 +126,8 @@ impl Agent {
             None => {
                 let now = Utc::now();
                 sqlx::query(
-                    "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, stripe_account_id, created_at)
-                     VALUES (?, ?, ?, 0, 0, 0, NULL, ?)",
+                    "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, balance_cents, stripe_account_id, created_at)
+                     VALUES (?, ?, ?, 0, 0, 0, 10000, NULL, ?)",
                 )
                 .bind(id)
                 .bind("Guest Buyer")
@@ -149,5 +149,87 @@ impl Agent {
                 })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::SqlitePool;
+
+    async fn setup_test_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("Failed to create test DB");
+        
+        sqlx::query(
+            r#"
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                reputation_score INTEGER NOT NULL DEFAULT 0,
+                total_sales INTEGER NOT NULL DEFAULT 0,
+                total_revenue_cents INTEGER NOT NULL DEFAULT 0,
+                balance_cents INTEGER NOT NULL DEFAULT 10000,
+                stripe_account_id TEXT,
+                created_at TEXT NOT NULL
+            )
+            "#
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        
+        pool
+    }
+
+    #[tokio::test]
+    async fn test_agent_create() {
+        let pool = setup_test_db().await;
+        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
+        
+        assert_eq!(agent.name, "Test Agent");
+        assert_eq!(agent.description, "A test agent");
+        assert_eq!(agent.balance_cents, 10000);
+        assert_eq!(agent.reputation_score, 0);
+    }
+
+    #[tokio::test]
+    async fn test_agent_get_by_id() {
+        let pool = setup_test_db().await;
+        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
+        
+        let fetched = Agent::get_by_id(&pool, &agent.id).await.unwrap();
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().name, "Test Agent");
+    }
+
+    #[tokio::test]
+    async fn test_agent_balance_update() {
+        let pool = setup_test_db().await;
+        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
+        
+        // Deduct balance
+        Agent::deduct_balance(&pool, &agent.id, 500).await.unwrap();
+        let updated = Agent::get_by_id(&pool, &agent.id).await.unwrap().unwrap();
+        assert_eq!(updated.balance_cents, 9500);
+        
+        // Add revenue
+        Agent::add_revenue(&pool, &agent.id, 200).await.unwrap();
+        let updated = Agent::get_by_id(&pool, &agent.id).await.unwrap().unwrap();
+        assert_eq!(updated.balance_cents, 9700);
+        assert_eq!(updated.total_revenue_cents, 200);
+    }
+
+    #[tokio::test]
+    async fn test_agent_deduct_balance_insufficient() {
+        let pool = setup_test_db().await;
+        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
+        
+        // Try to deduct more than balance — should silently fail (no rows updated)
+        Agent::deduct_balance(&pool, &agent.id, 20000).await.unwrap();
+        let updated = Agent::get_by_id(&pool, &agent.id).await.unwrap().unwrap();
+        assert_eq!(updated.balance_cents, 10000); // unchanged
     }
 }
