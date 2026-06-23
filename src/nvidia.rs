@@ -281,6 +281,39 @@ impl LocalLlmClient {
         let text = res.text().await?;
 
         if !status.is_success() {
+            // Model not loaded — try to auto-load via llama-swap /v1/load-model endpoint
+            if status.as_u16() == 404 || status.as_u16() == 503 {
+                eprintln!("[llm] Model {} not loaded, attempting auto-load...", model);
+                if let Err(e) = self.auto_load_model(model).await {
+                    eprintln!("[llm] Auto-load failed: {}", e);
+                }
+                // Retry once after auto-load
+                let retry_req = serde_json::json!({
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": max_tokens
+                });
+                let retry_res = self
+                    .client
+                    .post(format!("{}/v1/chat/completions", self.base_url))
+                    .json(&retry_req)
+                    .send()
+                    .await?;
+                let retry_status = retry_res.status();
+                let retry_text = retry_res.text().await?;
+                if retry_status.is_success() {
+                    let data: serde_json::Value = serde_json::from_str(&retry_text)
+                        .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, retry_text))?;
+                    return Ok(data["choices"][0]["message"]["content"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string());
+                }
+            }
             // Model not loaded or failed to start — fallback to default model
             eprintln!("[llm] Model {} failed ({}), falling back to {}", model, status, self.model);
             return self.chat(system, user).await;
@@ -293,6 +326,28 @@ impl LocalLlmClient {
             .as_str()
             .unwrap_or("")
             .to_string())
+    }
+
+    /// Auto-load a model via llama-swap's /v1/load-model endpoint
+    async fn auto_load_model(&self, model: &str) -> Result<()> {
+        let load_req = serde_json::json!({
+            "model": model
+        });
+        let res = self
+            .client
+            .post(format!("{}/v1/load-model", self.base_url))
+            .json(&load_req)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await?;
+        
+        if res.status().is_success() {
+            eprintln!("[llm] Auto-loaded model: {}", model);
+            Ok(())
+        } else {
+            let text = res.text().await.unwrap_or_default();
+            anyhow::bail!("Auto-load failed for {}: {}", model, text)
+        }
     }
 }
 
