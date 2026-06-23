@@ -5,11 +5,11 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::deliverable::Deliverable;
 use crate::models::service::Service;
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct ExecuteRequest {
@@ -27,14 +27,14 @@ pub struct ExecuteResponse {
 
 /// Execute a service directly without purchase (demo/try-before-you-buy)
 pub async fn execute_service(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(service_id): Path<String>,
     Json(req): Json<ExecuteRequest>,
 ) -> impl IntoResponse {
     let start = std::time::Instant::now();
 
     // Verify service exists
-    let service = match Service::get_by_id(&pool, &service_id).await {
+    let service = match Service::get_by_id(&state.pool, &service_id).await {
         Ok(Some(s)) => s,
         Ok(None) => {
             return (
@@ -51,7 +51,7 @@ pub async fn execute_service(
     };
 
     // Execute the service with user input
-    let result = match crate::delivery::execute_service_direct(&pool, &service_id, &req.user_input).await {
+    let result = match crate::delivery::execute_service_direct(&state.pool, &state.llm, &service_id, &req.user_input).await {
         Ok(output) => output,
         Err(e) => {
             return (
@@ -89,10 +89,10 @@ pub async fn execute_service(
 
 /// Get deliverable with full output for a transaction
 pub async fn get_deliverable(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match Deliverable::get_by_transaction(&pool, &id).await {
+    match Deliverable::get_by_transaction(&state.pool, &id).await {
         Ok(Some(d)) => {
             (StatusCode::OK, Json(serde_json::json!({ "deliverable": d })))
         }

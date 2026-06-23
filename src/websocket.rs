@@ -6,10 +6,10 @@ use axum::{
     response::Response,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use once_cell::sync::Lazy;
+use crate::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DashboardEvent {
@@ -36,7 +36,7 @@ pub fn get_events() -> &'static EventTx {
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
-    State(_pool): State<Arc<SqlitePool>>,
+    State(_pool): State<Arc<AppState>>,
 ) -> Response {
     ws.on_upgrade(handle_socket)
 }

@@ -21,6 +21,7 @@ use std::sync::Arc;
 use crate::models::agent::Agent;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
+use crate::AppState;
 
 /// An agent's current state in the marketplace
 #[derive(Debug, Clone, Serialize)]
@@ -77,12 +78,12 @@ fn det_choice<T: Clone>(items: &[T], seed: &str) -> Option<T> {
 
 /// The agent loop engine — drives autonomous marketplace activity
 pub struct AgentLoop {
-    pub pool: Arc<SqlitePool>,
+    pub pool: SqlitePool,
 }
 
 impl AgentLoop {
-    pub fn new(pool: Arc<SqlitePool>) -> Self {
-        Self { pool }
+    pub fn new(state: Arc<AppState>) -> Self {
+        Self { pool: state.pool.clone() }
     }
 
     /// Initialize agent states from database
@@ -282,7 +283,7 @@ impl AgentLoop {
 
     /// Agent creates a new service to sell using the service catalog
     async fn agent_sell(&self, agent: &Agent) -> Result<Option<InteractionResult>> {
-        use crate::service_catalog::{find_marketplace_gaps, calculate_price, is_duplicate, get_service_definition};
+        use crate::service_catalog::{find_marketplace_gaps, is_duplicate};
 
         // Get existing services to check for duplicates and gaps
         let existing_services = Service::list(&self.pool).await?;

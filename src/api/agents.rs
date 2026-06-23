@@ -5,10 +5,10 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::agent::Agent;
+use crate::AppState;
 
 #[derive(Debug, Serialize)]
 #[allow(dead_code)]
@@ -28,8 +28,8 @@ pub struct CreateAgentRequest {
     pub description: String,
 }
 
-pub async fn list_agents(State(pool): State<Arc<SqlitePool>>) -> impl IntoResponse {
-    match Agent::list(&pool).await {
+pub async fn list_agents(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match Agent::list(&state.pool).await {
         Ok(agents) => (StatusCode::OK, Json(serde_json::json!({ "agents": agents }))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -39,10 +39,10 @@ pub async fn list_agents(State(pool): State<Arc<SqlitePool>>) -> impl IntoRespon
 }
 
 pub async fn get_agent(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match Agent::get_by_id(&pool, &id).await {
+    match Agent::get_by_id(&state.pool, &id).await {
         Ok(Some(agent)) => {
             (StatusCode::OK, Json(serde_json::json!({ "agent": agent })))
         }
@@ -58,10 +58,17 @@ pub async fn get_agent(
 }
 
 pub async fn create_agent(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<CreateAgentRequest>,
 ) -> impl IntoResponse {
-    match Agent::create(&pool, &req.name, &req.description).await {
+    if req.name.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "name cannot be empty" })),
+        );
+    }
+
+    match Agent::create(&state.pool, &req.name, &req.description).await {
         Ok(agent) => {
             (StatusCode::CREATED, Json(serde_json::json!({ "agent": agent })))
         }

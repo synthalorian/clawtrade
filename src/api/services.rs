@@ -5,10 +5,10 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::service::Service;
+use crate::AppState;
 
 #[derive(Debug, Serialize)]
 #[allow(dead_code)]
@@ -25,8 +25,8 @@ pub struct CreateServiceRequest {
     pub service_type: String,
 }
 
-pub async fn list_services(State(pool): State<Arc<SqlitePool>>) -> impl IntoResponse {
-    match Service::list(&pool).await {
+pub async fn list_services(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match Service::list(&state.pool).await {
         Ok(services) => {
             (StatusCode::OK, Json(serde_json::json!({ "services": services })))
         }
@@ -38,10 +38,10 @@ pub async fn list_services(State(pool): State<Arc<SqlitePool>>) -> impl IntoResp
 }
 
 pub async fn get_service(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match Service::get_by_id(&pool, &id).await {
+    match Service::get_by_id(&state.pool, &id).await {
         Ok(Some(service)) => {
             (StatusCode::OK, Json(serde_json::json!({ "service": service })))
         }
@@ -57,11 +57,37 @@ pub async fn get_service(
 }
 
 pub async fn create_service(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<CreateServiceRequest>,
 ) -> impl IntoResponse {
+    // Input validation
+    if req.price_cents <= 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "price_cents must be greater than 0" })),
+        );
+    }
+    if req.price_cents > 50000 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "price_cents cannot exceed $500.00" })),
+        );
+    }
+    if req.name.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "name cannot be empty" })),
+        );
+    }
+    if req.agent_id.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "agent_id cannot be empty" })),
+        );
+    }
+
     match Service::create(
-        &pool,
+        &state.pool,
         &req.name,
         &req.description,
         req.price_cents,

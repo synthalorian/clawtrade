@@ -5,20 +5,20 @@ use axum::{
     routing::get,
 };
 use serde::Deserialize;
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::agent::Agent;
 use crate::models::deliverable::Deliverable;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
+use crate::AppState;
 
 #[derive(Deserialize)]
 pub struct TxQuery {
     pub tx_id: Option<String>,
 }
 
-pub fn dashboard_router(state: Arc<SqlitePool>) -> Router {
+pub fn dashboard_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index_handler))
         .route("/services", get(services_page))
@@ -34,16 +34,16 @@ pub fn dashboard_router(state: Arc<SqlitePool>) -> Router {
         .with_state(state)
 }
 
-pub async fn index_handler(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let services = match Service::list_active(&pool).await {
+pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
+    let services = match Service::list_active(&state.pool).await {
         Ok(s) => s,
         Err(_) => vec![],
     };
-    let agents = match Agent::list_top(&pool).await {
+    let agents = match Agent::list_top(&state.pool).await {
         Ok(a) => a,
         Err(_) => vec![],
     };
-    let transactions = match Transaction::list(&pool).await {
+    let transactions = match Transaction::list(&state.pool).await {
         Ok(t) => t,
         Err(_) => vec![],
     };
@@ -694,8 +694,8 @@ if (document.readyState === 'loading') {{
     ))
 }
 
-pub async fn services_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let services = match Service::list(&pool).await {
+pub async fn services_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let services = match Service::list(&state.pool).await {
         Ok(s) => s,
         Err(_) => vec![],
     };
@@ -733,8 +733,8 @@ pub async fn services_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
     )))
 }
 
-pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let agents = match Agent::list(&pool).await {
+pub async fn agents_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let agents = match Agent::list(&state.pool).await {
         Ok(a) => a,
         Err(_) => vec![],
     };
@@ -847,8 +847,8 @@ pub async fn agents_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
     )))
 }
 
-pub async fn transactions_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let transactions = match Transaction::list(&pool).await {
+pub async fn transactions_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let transactions = match Transaction::list(&state.pool).await {
         Ok(t) => t,
         Err(_) => vec![],
     };
@@ -883,8 +883,8 @@ pub async fn transactions_page(State(pool): State<Arc<SqlitePool>>) -> Html<Stri
     )))
 }
 
-pub async fn my_purchases_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let transactions = match Transaction::list(&pool).await {
+pub async fn my_purchases_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let transactions = match Transaction::list(&state.pool).await {
         Ok(t) => t,
         Err(_) => vec![],
     };
@@ -939,17 +939,17 @@ pub async fn my_purchases_page(State(pool): State<Arc<SqlitePool>>) -> Html<Stri
 }
 
 pub async fn deliverable_page(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Html<String> {
-    let tx = match Transaction::get_by_id(&pool, &id).await {
+    let tx = match Transaction::get_by_id(&state.pool, &id).await {
         Ok(Some(t)) => t,
         _ => {
             return Html(wrap_page("Not Found", r#"<div class="section"><h2>Transaction not found</h2></div>"#));
         }
     };
 
-    let deliverable = match Deliverable::get_by_transaction(&pool, &id).await {
+    let deliverable = match Deliverable::get_by_transaction(&state.pool, &id).await {
         Ok(Some(d)) => d,
         _ => {
             return Html(wrap_page("Not Ready", &format!(
@@ -959,7 +959,7 @@ pub async fn deliverable_page(
         }
     };
 
-    let service = match Service::get_by_id(&pool, &tx.service_id).await {
+    let service = match Service::get_by_id(&state.pool, &tx.service_id).await {
         Ok(Some(s)) => s,
         _ => {
             return Html(wrap_page("Error", r#"<div class="section"><h2>Service not found</h2></div>"#));
@@ -1486,8 +1486,8 @@ fn service_icon(service_type: &str) -> &'static str {
     }
 }
 
-pub async fn monitor_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let services = match Service::list_active(&pool).await {
+pub async fn monitor_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let services = match Service::list_active(&state.pool).await {
         Ok(s) => s,
         Err(_) => vec![],
     };
@@ -1564,13 +1564,13 @@ pub async fn monitor_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
     )))
 }
 
-pub async fn agent_loop_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let agents = match Agent::list(&pool).await {
+pub async fn agent_loop_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let agents = match Agent::list(&state.pool).await {
         Ok(a) => a,
         Err(_) => vec![],
     };
 
-    let transactions = match Transaction::list(&pool).await {
+    let transactions = match Transaction::list(&state.pool).await {
         Ok(t) => t,
         Err(_) => vec![],
     };
@@ -1720,13 +1720,13 @@ fn time_since(dt: &chrono::DateTime<chrono::Utc>) -> String {
 }
 
 
-pub async fn activity_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> {
-    let logs = match crate::models::activity_log::ActivityLog::list_global(&pool, 100).await {
+pub async fn activity_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let logs = match crate::models::activity_log::ActivityLog::list_global(&state.pool, 100).await {
         Ok(l) => l,
         Err(_) => vec![],
     };
 
-    let stats = match crate::models::activity_log::ActivityLog::get_stats(&pool).await {
+    let stats = match crate::models::activity_log::ActivityLog::get_stats(&state.pool).await {
         Ok(s) => s,
         Err(_) => crate::models::activity_log::ActivityStats {
             total_actions: 0,
@@ -1738,7 +1738,7 @@ pub async fn activity_page(State(pool): State<Arc<SqlitePool>>) -> Html<String> 
         },
     };
 
-    let agents = match Agent::list(&pool).await {
+    let agents = match Agent::list(&state.pool).await {
         Ok(a) => a,
         Err(_) => vec![],
     };

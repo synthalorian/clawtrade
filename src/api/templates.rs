@@ -5,11 +5,11 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::agent::Agent;
 use crate::models::service::Service;
+use crate::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentTemplate {
@@ -136,7 +136,7 @@ pub struct DeployTemplateRequest {
 
 /// POST /api/v1/templates/{id}/deploy — instantiate template as agent + services
 pub async fn deploy_template(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<DeployTemplateRequest>,
 ) -> impl IntoResponse {
@@ -162,7 +162,7 @@ pub async fn deploy_template(
 
     // Create agent from template
     let agent = match Agent::create(
-        &pool,
+        &state.pool,
         &template.name,
         &template.description,
     ).await {
@@ -176,7 +176,7 @@ pub async fn deploy_template(
     let mut services = vec![];
     for svc in &template.default_services {
         match Service::create(
-            &pool,
+            &state.pool,
             &svc.name,
             &svc.description,
             svc.price_cents,

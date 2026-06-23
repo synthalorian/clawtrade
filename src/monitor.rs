@@ -66,7 +66,8 @@ pub async fn demonstrate_service(pool: &SqlitePool, service_id: &str) -> Result<
     let sample_input = get_sample_input(&service.service_type);
     let start = std::time::Instant::now();
     
-    let output = execute_service_direct(pool, service_id, &sample_input).await?;
+    let llm = crate::nvidia::LlmClient::new();
+    let output = execute_service_direct(pool, &llm, service_id, &sample_input).await?;
     let latency_ms = start.elapsed().as_millis() as u64;
     
     Ok(ServiceDemo {

@@ -21,6 +21,16 @@ mod websocket;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
+    pub llm: Arc<nvidia::LlmClient>,
+}
+
+impl AppState {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self {
+            pool,
+            llm: Arc::new(nvidia::LlmClient::new()),
+        }
+    }
 }
 
 #[tokio::main]
@@ -36,7 +46,7 @@ async fn main() -> Result<()> {
     eprintln!("[clawtrade] database: {}", db_path.display());
 
     let pool = db::init_db(&db_path).await?;
-    let state = Arc::new(pool);
+    let state = Arc::new(AppState::new(pool));
 
     let api_routes = Router::new()
         .route("/api/services", get(api::services::list_services).post(api::services::create_service))
@@ -100,11 +110,17 @@ async fn main() -> Result<()> {
     eprintln!("[clawtrade] API server starting on http://{}", api_addr);
     eprintln!("[clawtrade] Dashboard starting on http://{}", dashboard_addr);
 
+    // CORS: permissive in debug, restricted in release
+    #[cfg(debug_assertions)]
+    let cors = CorsLayer::permissive();
+    #[cfg(not(debug_assertions))]
+    let cors = CorsLayer::new();
+
     // API server: API routes + dashboard routes (for full functionality)
     let app = Router::new()
         .merge(api_routes.clone())
         .merge(dashboard_routes)
-        .layer(CorsLayer::permissive());
+        .layer(cors);
 
     let api_listener = tokio::net::TcpListener::bind(&api_addr).await?;
     let api_handle = tokio::spawn(async move {
@@ -120,13 +136,13 @@ async fn main() -> Result<()> {
     });
 
     // Auto-tick: agents trade autonomously every 30 seconds
-    let tick_pool = state.clone();
+    let tick_state = state.clone();
     let tick_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            let loop_engine = crate::agent_loop::AgentLoop::new(tick_pool.clone());
+            let loop_engine = crate::agent_loop::AgentLoop::new(tick_state.clone());
             match loop_engine.tick().await {
                 Ok(results) => {
                     if !results.is_empty() {
@@ -144,6 +160,5 @@ async fn main() -> Result<()> {
         r = dashboard_handle => r??,
         _ = tick_handle => {},
     }
-
     Ok(())
 }

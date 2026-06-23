@@ -6,12 +6,12 @@ use axum::{
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::agent::Agent;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateCheckoutRequest {
@@ -77,10 +77,10 @@ pub struct DemoPurchaseResponse {
 }
 
 pub async fn demo_purchase(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<DemoPurchaseRequest>,
 ) -> impl IntoResponse {
-    let service = match Service::get_by_id(&pool, &req.service_id).await {
+    let service = match Service::get_by_id(&state.pool, &req.service_id).await {
         Ok(Some(s)) => s,
         Ok(None) => {
             return (
@@ -97,7 +97,7 @@ pub async fn demo_purchase(
     };
 
     // Ensure buyer exists
-    if let Err(e) = Agent::get_or_create_guest(&pool, &req.buyer_id).await {
+    if let Err(e) = Agent::get_or_create_guest(&state.pool, &req.buyer_id).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": format!("buyer creation failed: {}", e)})),
@@ -106,7 +106,7 @@ pub async fn demo_purchase(
 
     // Create transaction
     let tx = match Transaction::create(
-        &pool,
+        &state.pool,
         &req.service_id,
         &req.buyer_id,
         &service.agent_id,
@@ -129,14 +129,14 @@ pub async fn demo_purchase(
     )
     .bind(Utc::now())
     .bind(&tx.id)
-    .execute(&*pool)
+    .execute(&state.pool)
     .await;
 
     // Increment seller stats
-    let _ = Agent::increment_sales(&pool, &service.agent_id, service.price_cents).await;
+    let _ = Agent::increment_sales(&state.pool, &service.agent_id, service.price_cents).await;
 
     // Trigger delivery
-    let delivery_result = crate::delivery::trigger_delivery(&pool, &tx.id).await;
+    let delivery_result = crate::delivery::trigger_delivery(&state.pool, &tx.id).await;
     if let Err(e) = &delivery_result {
         eprintln!("[demo] delivery failed for tx {}: {}", tx.id, e);
     }
@@ -171,10 +171,10 @@ pub async fn demo_purchase(
 }
 
 pub async fn create_checkout(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Query(req): Query<CreateCheckoutRequest>,
 ) -> impl IntoResponse {
-    let service = match Service::get_by_id(&pool, &req.service_id).await {
+    let service = match Service::get_by_id(&state.pool, &req.service_id).await {
         Ok(Some(s)) => s,
         Ok(None) => {
             return (
@@ -191,7 +191,7 @@ pub async fn create_checkout(
     };
 
     // Ensure buyer exists (auto-create guest if needed)
-    if let Err(e) = Agent::get_or_create_guest(&pool, &req.buyer_id).await {
+    if let Err(e) = Agent::get_or_create_guest(&state.pool, &req.buyer_id).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": format!("buyer creation failed: {}", e)})),
@@ -199,7 +199,7 @@ pub async fn create_checkout(
     }
 
     let tx = match Transaction::create(
-        &pool,
+        &state.pool,
         &req.service_id,
         &req.buyer_id,
         &service.agent_id,
@@ -228,7 +228,7 @@ pub async fn create_checkout(
 
     let client = reqwest::Client::new();
 
-    let seller = match Agent::get_by_id(&pool, &service.agent_id).await {
+    let seller = match Agent::get_by_id(&state.pool, &service.agent_id).await {
         Ok(Some(a)) => a,
         _ => {
             return (
@@ -297,7 +297,7 @@ pub async fn create_checkout(
 
     if let Some(url) = stripe_data["url"].as_str() {
         let session_id = stripe_data["id"].as_str().unwrap_or("").to_string();
-        if let Err(_e) = Transaction::update_stripe_session(&pool, &tx.id, &session_id).await {
+        if let Err(_e) = Transaction::update_stripe_session(&state.pool, &tx.id, &session_id).await {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": _e.to_string()})),
@@ -319,7 +319,7 @@ pub async fn create_checkout(
 }
 
 pub async fn stripe_webhook(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<WebhookPayload>,
 ) -> impl IntoResponse {
     if payload.event_type == "checkout.session.completed" {
@@ -333,7 +333,7 @@ pub async fn stripe_webhook(
                     "SELECT * FROM transactions WHERE stripe_session_id = ?",
                 )
                 .bind(session_id)
-                .fetch_optional(&*pool)
+                .fetch_optional(&state.pool)
                 .await;
 
                 // If not found, check metadata for transaction_id (demo mode)
@@ -346,7 +346,7 @@ pub async fn stripe_webhook(
                                     "SELECT * FROM transactions WHERE id = ?",
                                 )
                                 .bind(tx_id)
-                                .fetch_optional(&*pool)
+                                .fetch_optional(&state.pool)
                                 .await
                                 .unwrap_or(None)
                             } else {
@@ -360,7 +360,7 @@ pub async fn stripe_webhook(
 
                 if let Some(ref tx) = tx {
                     // Mark as paid (escrow)
-                    let update_result = Transaction::mark_paid_by_stripe_session(&pool, session_id).await;
+                    let update_result = Transaction::mark_paid_by_stripe_session(&state.pool, session_id).await;
                     if update_result.is_err() || tx.stripe_session_id.is_none() {
                         // Fallback: update directly by tx id (demo mode — no real stripe session)
                         let _ = sqlx::query(
@@ -368,15 +368,15 @@ pub async fn stripe_webhook(
                         )
                         .bind(Utc::now())
                         .bind(&tx.id)
-                        .execute(&*pool)
+                        .execute(&state.pool)
                         .await;
 
                         // Increment seller stats
-                        let _ = crate::models::agent::Agent::increment_sales(&pool, &tx.seller_id, tx.amount_cents).await;
+                        let _ = crate::models::agent::Agent::increment_sales(&state.pool, &tx.seller_id, tx.amount_cents).await;
                     }
 
                     // Trigger service delivery
-                    if let Err(e) = crate::delivery::trigger_delivery(&pool, &tx.id).await {
+                    if let Err(e) = crate::delivery::trigger_delivery(&state.pool, &tx.id).await {
                         eprintln!("[delivery] failed for tx {}: {}", tx.id, e);
                     }
 
@@ -395,7 +395,7 @@ pub async fn stripe_webhook(
 }
 
 pub async fn create_connect_account(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<ConnectAccountRequest>,
 ) -> impl IntoResponse {
     let stripe_secret = match stripe_secret() {
@@ -408,7 +408,7 @@ pub async fn create_connect_account(
         }
     };
 
-    let agent = match Agent::get_by_id(&pool, &req.agent_id).await {
+    let agent = match Agent::get_by_id(&state.pool, &req.agent_id).await {
         Ok(Some(a)) => a,
         Ok(None) => {
             return (
@@ -515,7 +515,7 @@ pub async fn create_connect_account(
         }
     };
 
-    if let Err(e) = Agent::update_stripe_account(&pool, &req.agent_id, &account_id).await {
+    if let Err(e) = Agent::update_stripe_account(&state.pool, &req.agent_id, &account_id).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
@@ -570,7 +570,7 @@ pub async fn create_connect_account(
 }
 
 pub async fn create_account_link(
-    State(_pool): State<Arc<SqlitePool>>,
+    State(_pool): State<Arc<AppState>>,
     Json(req): Json<AccountLinkRequest>,
 ) -> impl IntoResponse {
     let stripe_secret = match stripe_secret() {

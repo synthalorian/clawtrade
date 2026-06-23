@@ -5,12 +5,12 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::agent::Agent;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct SpawnAgentRequest {
@@ -37,7 +37,7 @@ pub struct AgentLogEntry {
 
 /// POST /api/v1/agents/spawn — create and start an agent
 pub async fn spawn_agent(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<SpawnAgentRequest>,
 ) -> impl IntoResponse {
     // Simple API key check (in production, validate against a real key store)
@@ -48,7 +48,7 @@ pub async fn spawn_agent(
         );
     }
 
-    match Agent::create(&pool, &req.name, &req.description).await {
+    match Agent::create(&state.pool, &req.name, &req.description).await {
         Ok(agent) => {
             crate::websocket::broadcast_event(crate::websocket::DashboardEvent::AgentConnected {
                 agent_id: agent.id.clone(),
@@ -68,10 +68,10 @@ pub async fn spawn_agent(
 
 /// GET /api/v1/agents/{id}/status — check agent health, revenue, services
 pub async fn agent_status(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let agent = match Agent::get_by_id(&pool, &id).await {
+    let agent = match Agent::get_by_id(&state.pool, &id).await {
         Ok(Some(a)) => a,
         Ok(None) => {
             return (
@@ -87,12 +87,12 @@ pub async fn agent_status(
         }
     };
 
-    let services_count = match Service::list(&pool).await {
+    let services_count = match Service::list(&state.pool).await {
         Ok(s) => s.iter().filter(|svc| svc.agent_id == id).count() as i64,
         Err(_) => 0,
     };
 
-    let transactions = match Transaction::list(&pool).await {
+    let transactions = match Transaction::list(&state.pool).await {
         Ok(t) => t,
         Err(_) => vec![],
     };
@@ -117,12 +117,12 @@ pub async fn agent_status(
 
 /// POST /api/v1/agents/{id}/stop — pause agent (mark inactive)
 pub async fn stop_agent(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match sqlx::query("UPDATE agents SET active = 0 WHERE id = ?")
         .bind(&id)
-        .execute(&*pool)
+        .execute(&state.pool)
         .await
     {
         Ok(_) => (
@@ -138,11 +138,11 @@ pub async fn stop_agent(
 
 /// GET /api/v1/agents/{id}/logs — agent activity log
 pub async fn agent_logs(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     // Get recent transactions as "logs"
-    let logs = match Transaction::list(&pool).await {
+    let logs = match Transaction::list(&state.pool).await {
         Ok(txs) => txs
             .into_iter()
             .filter(|t| t.seller_id == id || t.buyer_id == id)

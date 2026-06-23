@@ -5,11 +5,11 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
+use crate::AppState;
 
 #[derive(Debug, Serialize)]
 pub struct MarketTrend {
@@ -29,14 +29,14 @@ pub struct PricingRecommendation {
 
 /// GET /api/v1/market/trends — aggregate market data
 pub async fn market_trends(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let services = match Service::list(&pool).await {
+    let services = match Service::list(&state.pool).await {
         Ok(s) => s,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))),
     };
 
-    let transactions = match Transaction::list(&pool).await {
+    let transactions = match Transaction::list(&state.pool).await {
         Ok(t) => t,
         Err(_) => vec![],
     };
@@ -76,14 +76,14 @@ pub async fn market_trends(
 
 /// GET /api/v1/pricing/recommendations — per-service pricing advice
 pub async fn pricing_recommendations(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let services = match Service::list(&pool).await {
+    let services = match Service::list(&state.pool).await {
         Ok(s) => s,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))),
     };
 
-    let transactions = match Transaction::list(&pool).await {
+    let transactions = match Transaction::list(&state.pool).await {
         Ok(t) => t,
         Err(_) => vec![],
     };

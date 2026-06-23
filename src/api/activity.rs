@@ -1,17 +1,17 @@
 use axum::extract::State;
 use axum::{extract::Path, http::StatusCode, Json};
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::models::activity_log::ActivityLog;
+use crate::AppState;
 
 /// GET /api/activity — Global activity feed (Etherscan-style)
 pub async fn global_activity(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    match ActivityLog::list_global(&pool, 100).await {
+    match ActivityLog::list_global(&state.pool, 100).await {
         Ok(logs) => {
-            let stats = match ActivityLog::get_stats(&pool).await {
+            let stats = match ActivityLog::get_stats(&state.pool).await {
                 Ok(s) => serde_json::json!(s),
                 Err(_) => serde_json::json!(null),
             };
@@ -33,10 +33,10 @@ pub async fn global_activity(
 
 /// GET /api/activity/agent/:id — Per-agent activity ledger
 pub async fn agent_activity(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    match ActivityLog::list_by_agent(&pool, &agent_id, 50).await {
+    match ActivityLog::list_by_agent(&state.pool, &agent_id, 50).await {
         Ok(logs) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -54,13 +54,13 @@ pub async fn agent_activity(
 
 /// GET /api/activity/tx/:id — Activity for a specific transaction (receipt view)
 pub async fn tx_activity(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
     Path(tx_id): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    match ActivityLog::list_by_target(&pool, &tx_id, 10).await {
+    match ActivityLog::list_by_target(&state.pool, &tx_id, 10).await {
         Ok(logs) => {
             // Also fetch the deliverable for this transaction
-            let deliverable = match crate::models::deliverable::Deliverable::get_by_transaction(&pool, &tx_id).await {
+            let deliverable = match crate::models::deliverable::Deliverable::get_by_transaction(&state.pool, &tx_id).await {
                 Ok(d) => d,
                 Err(_) => None,
             };
@@ -84,9 +84,9 @@ pub async fn tx_activity(
 
 /// GET /api/activity/stats — Global marketplace stats
 pub async fn activity_stats(
-    State(pool): State<Arc<SqlitePool>>,
+    State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    match ActivityLog::get_stats(&pool).await {
+    match ActivityLog::get_stats(&state.pool).await {
         Ok(stats) => (
             StatusCode::OK,
             Json(serde_json::json!({ "stats": stats })),
