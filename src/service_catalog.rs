@@ -61,7 +61,8 @@ pub enum ModelAssignment {
     Gemma12B,      // Balanced — medium tasks
     Qwen35B,       // Complex reasoning
     Phi4Reasoning, // Deep reasoning, math
-    Gemma26B,      // Maximum capability, huge context
+    Gemma26B,      // Maximum capability, 256k context
+    Gemma26B512K,  // Maximum capability, 512k context
 }
 
 impl ModelAssignment {
@@ -73,6 +74,7 @@ impl ModelAssignment {
             ModelAssignment::Qwen35B => "CLAWTRADE_MODEL_QWEN35B",
             ModelAssignment::Phi4Reasoning => "CLAWTRADE_MODEL_PHI4",
             ModelAssignment::Gemma26B => "CLAWTRADE_MODEL_GEMMA26B",
+            ModelAssignment::Gemma26B512K => "CLAWTRADE_MODEL_GEMMA26B_512K",
         };
         std::env::var(env_key).unwrap_or_else(|_| self.default_model_name().to_string())
     }
@@ -85,6 +87,7 @@ impl ModelAssignment {
             ModelAssignment::Qwen35B => "qwen-35b-128k",
             ModelAssignment::Phi4Reasoning => "phi-4-reasoning-256k",
             ModelAssignment::Gemma26B => "gemma-26b-256k",
+            ModelAssignment::Gemma26B512K => "gemma-26b-512k",
         }
     }
 
@@ -95,6 +98,7 @@ impl ModelAssignment {
             ModelAssignment::Qwen35B => "128k",
             ModelAssignment::Phi4Reasoning => "256k",
             ModelAssignment::Gemma26B => "256k",
+            ModelAssignment::Gemma26B512K => "512k",
         }
     }
 
@@ -105,6 +109,7 @@ impl ModelAssignment {
             ModelAssignment::Qwen35B => 2.5,
             ModelAssignment::Phi4Reasoning => 3.0,
             ModelAssignment::Gemma26B => 4.0,
+            ModelAssignment::Gemma26B512K => 5.0,
         }
     }
 }
@@ -480,7 +485,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Book Summary + Q&A",
         description: "Upload entire books/PDFs and ask detailed questions (up to 512k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma26B512K,
         base_price_cents: 399,
         system_prompt: "Analyze long documents thoroughly. Answer specific questions with citations to relevant sections. Be precise about page numbers and quotes.",
         user_prompt_template: "Document:\n\n{document}\n\nQuestion: {question}",
@@ -544,7 +549,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Research Synthesis",
         description: "Synthesize multiple papers into literature reviews",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma26B512K,
         base_price_cents: 499,
         system_prompt: "Synthesize research papers into coherent literature reviews. Identify gaps, contradictions, and consensus. Cite specific papers.",
         user_prompt_template: "Synthesize these papers:\n\n{input}",
@@ -596,7 +601,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Full Repo Analysis",
         description: "Analyze entire Git repositories up to 512k tokens in one shot",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma26B512K,
         base_price_cents: 1499,
         system_prompt: "Analyze entire codebases comprehensively. Find bugs, security issues, performance bottlenecks, and architectural problems. Be specific about file paths and line numbers.",
         user_prompt_template: "Analyze this entire codebase:\n\n{input}\n\nFocus: {focus}",
@@ -612,7 +617,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Bulk Document Processing",
         description: "Process 1000+ documents with no rate limits. Extract tables, entities, relationships",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma26B512K,
         base_price_cents: 1999,
         system_prompt: "Process large volumes of documents efficiently. Extract structured data, identify entities, and find relationships across documents. Handle duplicates and inconsistencies.",
         user_prompt_template: "Process these documents and extract {extraction_target}:\n\n{input}",
@@ -644,7 +649,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Custom Model Inference",
         description: "Run your fine-tuned models on private data. Domain-specific analysis",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma26B512K,
         base_price_cents: 2999,
         system_prompt: "Execute domain-specific analysis using custom model weights. Apply specialized knowledge to private data sets. Maintain confidentiality.",
         user_prompt_template: "Run analysis on private data using custom model {model_name}:\n\n{input}",
@@ -676,7 +681,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Massive Context Q&A",
         description: "Upload 500k tokens of context and ask complex multi-hop questions",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma26B512K,
         base_price_cents: 1299,
         system_prompt: "Answer complex questions requiring reasoning across massive context. Connect information from distant parts of the document. Cite specific sections.",
         user_prompt_template: "Context:\n\n{context}\n\nQuestion: {question}",
@@ -692,7 +697,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Codebase Migration Plan",
         description: "Plan migration of 500k+ line monoliths to microservices with full dependency mapping",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma26B512K,
         base_price_cents: 3499,
         system_prompt: "Create detailed migration plans for large codebases. Map dependencies, identify service boundaries, estimate effort, and flag risks. Be specific about files and modules.",
         user_prompt_template: "Plan migration of this codebase to {target_architecture}:\n\n{input}",

@@ -897,25 +897,6 @@ function initTryButtons() {
   });
 }
 
-function initBuyButtons() {
-  document.querySelectorAll(".btn-buy").forEach(btn => {
-    const href = btn.getAttribute("href");
-    if (!href) return;
-    const match = href.match(/service_id=([^&]+)/);
-    if (!match) return;
-    const serviceId = match[1];
-    btn.removeAttribute("href");
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (isLinked()) {
-        window.location.href = href;
-      } else {
-        showLinkAccountModal();
-      }
-    });
-  });
-}
-
 function showLinkAccountModal() {
   if (document.getElementById("link-modal")) return;
   const modal = document.createElement("div");
@@ -1019,12 +1000,7 @@ async function runLiveDemo(serviceId) {
         try {
           const data = JSON.parse(e.data);
           console.log("[WS]", data);
-          if (window.refreshActivity && typeof window.refreshActivity === "function") {
-            if (!window._lastRefresh || Date.now() - window._lastRefresh > 2000) {
-              window._lastRefresh = Date.now();
-              window.refreshActivity();
-            }
-          }
+          if (window.refreshActivity && typeof window.refreshActivity === "function") window.refreshActivity();
         } catch (err) {}
       };
       ws.onclose = () => { if (reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, 5000); };
@@ -1035,12 +1011,8 @@ async function runLiveDemo(serviceId) {
 })();
 
 // Init
-function initAllButtons() {
-  initTryButtons();
-  initBuyButtons();
-}
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initAllButtons);
-else initAllButtons();
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initTryButtons);
+else initTryButtons();
 "#;
 
 fn wrap_page(title: &str, content: &str, active_agents: usize) -> String {
@@ -1139,8 +1111,8 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
                 <div class="price">${}.{}</div>
                 <div class="model-info">{}</div>
                 <div class="buy-row">
-                  <a href="/api/checkout?service_id={}&buyer_id=anonymous" class="btn btn-buy">Buy</a>
-                  <button class="btn btn-secondary btn-try" id="try-btn-{}">Try</button>
+                  <a href="/api/checkout?service_id={}&buyer_id=anonymous" class="btn">Buy</a>
+                  <button class="btn btn-secondary" id="try-btn-{}">Try</button>
                 </div>
             </div>"#,
             service_icon(&s.service_type),
@@ -1271,21 +1243,7 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
 }
 
 pub async fn services_page(State(state): State<Arc<AppState>>) -> Html<String> {
-    let all_services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
-    // Filter to only catalog services — remove auto-generated duplicates
-    let catalog_types: std::collections::HashSet<String> = crate::service_catalog::SERVICE_CATALOG
-        .iter().map(|s| s.service_type.to_string()).collect();
-    // Deduplicate by service_type — keep the most recent one
-    let mut unique: std::collections::HashMap<String, Service> = std::collections::HashMap::new();
-    for s in all_services {
-        if !catalog_types.contains(&s.service_type) {
-            continue;
-        }
-        unique.entry(s.service_type.clone())
-            .and_modify(|existing| { if s.created_at > existing.created_at { *existing = s.clone(); } })
-            .or_insert(s);
-    }
-    let services: Vec<Service> = unique.into_values().collect();
+    let services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
     let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
     let agent_names: std::collections::HashMap<String, String> = all_agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
 
@@ -1315,8 +1273,8 @@ pub async fn services_page(State(state): State<Arc<AppState>>) -> Html<String> {
                 <div class="model-info">{}</div>
                 <div class="meta">by <span class="by-agent" title="{}">{}</span></div>
                 <div class="buy-row">
-                  <a href="/api/checkout?service_id={}&buyer_id=anonymous" class="btn btn-buy">Buy</a>
-                  <button class="btn btn-secondary btn-try" id="try-btn-{}">Try</button>
+                  <a href="/api/checkout?service_id={}&buyer_id=anonymous" class="btn">Buy</a>
+                  <button class="btn btn-secondary" id="try-btn-{}">Try</button>
                 </div>
             </div>"#,
             tier_class.replace("tier-", ""),
@@ -1362,10 +1320,8 @@ pub async fn agents_page(State(state): State<Arc<AppState>>) -> Html<String> {
     let agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
     let all_agents_count = agents.len();
 
-    let now = chrono::Utc::now();
-    let five_minutes_ago = now - chrono::Duration::minutes(5);
     let agents_html = agents.iter().map(|a| {
-        let is_new = a.created_at > five_minutes_ago;
+        let is_new = a.total_sales == 0;
         let avatar_color = avatar_color_for(&a.name);
         let initials = agent_initials(&a.name);
         let stripe_html = if a.stripe_account_id.is_some() {
@@ -1437,9 +1393,7 @@ pub async fn agents_page(State(state): State<Arc<AppState>>) -> Html<String> {
 pub async fn transactions_page(State(state): State<Arc<AppState>>) -> Html<String> {
     let transactions = match Transaction::list(&state.pool).await { Ok(t) => t, Err(_) => vec![] };
     let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
-    let all_services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
     let agent_names: std::collections::HashMap<String, String> = all_agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
-    let service_names: std::collections::HashMap<String, String> = all_services.iter().map(|s| (s.id.clone(), s.name.clone())).collect();
 
     let tx_html = transactions.iter().map(|t| {
         let icon = match t.status.as_str() {
@@ -1456,12 +1410,11 @@ pub async fn transactions_page(State(state): State<Arc<AppState>>) -> Html<Strin
         };
         let buyer_name = agent_names.get(&t.buyer_id).map(|n| n.as_str()).unwrap_or(&t.buyer_id[..8.min(t.buyer_id.len())]);
         let seller_name = agent_names.get(&t.seller_id).map(|n| n.as_str()).unwrap_or(&t.seller_id[..8.min(t.seller_id.len())]);
-        let service_name = service_names.get(&t.service_id).map(|n| n.as_str()).unwrap_or("Unknown Service");
         format!(
             r#"<div class="tx-row-item" data-type="purchase">
                 <div class="tx-row-icon">{}</div>
                 <div class="tx-row-body">
-                    <div class="tx-desc"><strong>{}</strong> bought <strong>{}</strong> from <strong>{}</strong></div>
+                    <div class="tx-desc"><strong>{}</strong> bought from <strong>{}</strong></div>
                     <div class="tx-time">{}</div>
                 </div>
                 <div class="tx-row-right">
@@ -1471,7 +1424,6 @@ pub async fn transactions_page(State(state): State<Arc<AppState>>) -> Html<Strin
             </div>"#,
             icon,
             html_escape(buyer_name),
-            html_escape(service_name),
             html_escape(seller_name),
             time_since(&t.created_at),
             t.amount_cents / 100, format_cents(t.amount_cents % 100),
@@ -1493,9 +1445,7 @@ pub async fn transactions_page(State(state): State<Arc<AppState>>) -> Html<Strin
 pub async fn my_purchases_page(State(state): State<Arc<AppState>>) -> Html<String> {
     let transactions = match Transaction::list(&state.pool).await { Ok(t) => t, Err(_) => vec![] };
     let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
-    let all_services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
     let agent_names: std::collections::HashMap<String, String> = all_agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
-    let service_names: std::collections::HashMap<String, String> = all_services.iter().map(|s| (s.id.clone(), s.name.clone())).collect();
 
     let (completed, pending): (Vec<_>, Vec<_>) = transactions.iter().partition(|t| t.status == "released" || t.status == "escrow");
     let tx_rows = |txs: Vec<&Transaction>| -> String {
@@ -1507,7 +1457,6 @@ pub async fn my_purchases_page(State(state): State<Arc<AppState>>) -> Html<Strin
                 _ => r#"<span class="status-badge status-pending">Pending</span>"#,
             };
             let seller_name = agent_names.get(&t.seller_id).map(|n| n.as_str()).unwrap_or(&t.seller_id[..8.min(t.seller_id.len())]);
-            let service_name = service_names.get(&t.service_id).map(|n| n.as_str()).unwrap_or("Unknown Service");
             let action_btn = if t.status == "escrow" || t.status == "released" {
                 format!(r#"<a href="/deliverable/{}" class="btn btn-sm">View</a>"#, t.id)
             } else {
@@ -1526,7 +1475,7 @@ pub async fn my_purchases_page(State(state): State<Arc<AppState>>) -> Html<Strin
                         {}
                     </div>
                 </div>"#,
-                html_escape(service_name),
+                html_escape(&t.service_id[..8.min(t.service_id.len())]),
                 html_escape(seller_name),
                 time_since(&t.created_at),
                 t.amount_cents / 100, format_cents(t.amount_cents % 100),
@@ -1652,14 +1601,14 @@ pub async fn monitor_page(State(state): State<Arc<AppState>>) -> Html<String> {
     let agent_names: std::collections::HashMap<String, String> = all_agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
 
     let showcases = services.iter().map(|s| {
-        let (icon, sample_input, sample_output) = match crate::service_catalog::get_service_definition(&s.service_type) {
-            Some(def) => {
-                let icon = service_icon(def.service_type);
-                let input = if def.example_input.is_empty() { "" } else { def.example_input };
-                let output = if def.example_output.is_empty() { "" } else { def.example_output };
-                (icon, input, output)
-            }
-            None => ("🔧", "", ""),
+        let (icon, sample_input, sample_output) = match s.service_type.as_str() {
+            "text_processing" => ("📝", "Long article about AI advancement...", "Key insight one\nKey insight two\nKey insight three"),
+            "data_formatting" => ("📊", r#"{"users":[{"id":1,"name":"Alice"}]}"#, "Formatted JSON with validation"),
+            "api_monitor" => ("📡", "https://api.example.com/health", "Status: 200 OK | Latency: 45ms"),
+            "code_review" => ("💻", "fn process(items: Vec<Item>) -> Result<...>", "Good error handling | Division by zero risk"),
+            "creative_writing" => ("✨", "Cyberpunk marketplace theme", "Neon signs flickered above the chrome walkways..."),
+            "analysis" => ("🔍", "Sales data: Jan $12k, Feb $15k...", "Upward trend | Peak at 2-4 PM"),
+            _ => ("🔧", "Custom service input", "Custom service output"),
         };
         let has_samples = !sample_input.is_empty() && !sample_output.is_empty();
         let seller_name = agent_names.get(&s.agent_id).map(|n| n.as_str()).unwrap_or("Unknown");
@@ -1792,59 +1741,34 @@ pub async fn agent_loop_page(State(state): State<Arc<AppState>>) -> Html<String>
             document.querySelectorAll('.speed-toggle button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
         }}
-        document.addEventListener('keydown', e => {{
-            if (e.code === 'Space' && !e.repeat) {{
-                e.preventDefault();
-                runTick();
-            }}
-        }});
+        document.addEventListener('keydown', e => {{ if (e.code === 'Space' && !e.repeat) {{ e.preventDefault(); runTick(); }} }});
         async function runTick() {{
             const status = document.getElementById('tick-status');
             const results = document.getElementById('tick-results');
             const log = document.getElementById('event-log');
             status.textContent = 'Running...';
             try {{
-                const resp = await fetch('/api/agents/tick', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ speed: simSpeed }})
-                }});
+                const resp = await fetch('/api/agents/tick', {{ method: 'POST' }});
                 const data = await resp.json();
                 status.textContent = 'Tick complete: ' + (data.count || 0) + ' interactions';
                 let html = '<div class="interactions">';
                 for (const i of data.interactions || []) {{
                     const cls = i.success ? 'success flash' : 'failed';
-                    html += '<div class="interaction ' + cls + '" data-agent="' + (i.agent_id || i.agent) + '" data-service="' + (i.service_id || i.service || '') + '" data-price="' + (i.price_cents || 0) + '">';
-                    html += '<span class="int-type">' + i.type + '</span>';
-                    html += '<span class="int-agent">' + (i.agent || i.agent_id) + '</span>';
-                    html += '<span class="int-msg">' + (i.service ? 'bought ' + i.service : i.message || '') + '</span>';
-                    html += '</div>';
+                    html += '<div class="interaction ' + cls + '"><span class="int-type">' + i.type + '</span><span class="int-agent">' + (i.agent || i.agent_id) + '</span><span class="int-msg">' + (i.service ? 'bought ' + i.service : i.message || '') + '</span></div>';
                     if (i.success && log) {{
                         const line = document.createElement('div');
                         line.className = 'log-line';
-                        const time = new Date().toLocaleTimeString();
-                        const agent = i.agent || i.agent_id || 'Unknown';
-                        const service = i.service || i.service_id || 'Unknown';
-                        const price = i.price_cents ? '$' + (i.price_cents / 100).toFixed(2) : '';
-                        line.innerHTML = '<span class="log-time">' + time + '</span> <span class="log-agent">' + agent + '</span> <span class="log-action">' + i.type + '</span> <span class="log-service">' + service + '</span> <span class="log-price">' + price + '</span>';
+                        line.innerHTML = '<span class="log-time">' + new Date().toLocaleTimeString() + '</span> <span class="log-agent">' + (i.agent || i.agent_id) + '</span> <span class="log-action">' + i.type + '</span> <span class="log-service">' + (i.service || '') + '</span>';
                         log.appendChild(line);
                         log.scrollTop = log.scrollHeight;
                     }}
                 }}
                 html += '</div>';
                 results.innerHTML = html;
-                setTimeout(() => {{
-                    document.querySelectorAll('.interaction.flash').forEach(el => el.classList.remove('flash'));
-                }}, 800);
-            }} catch (e) {{
-                status.textContent = 'Error: ' + e.message;
-            }}
+                setTimeout(() => {{ document.querySelectorAll('.interaction.flash').forEach(el => el.classList.remove('flash')); }}, 800);
+            }} catch (e) {{ status.textContent = 'Error: ' + e.message; }}
         }}
-        function resetLoop() {{
-            document.getElementById('tick-results').innerHTML = '';
-            document.getElementById('tick-status').textContent = 'Reset';
-            document.getElementById('event-log').innerHTML = '';
-        }}
+        function resetLoop() {{ document.getElementById('tick-results').innerHTML = ''; document.getElementById('tick-status').textContent = 'Reset'; document.getElementById('event-log').innerHTML = ''; }}
         </script>"#,
         agent_rows, recent_tx
     ), agents.len()))

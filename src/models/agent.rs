@@ -51,6 +51,19 @@ impl Agent {
         )
         .fetch_all(pool)
         .await?;
+        // Deduplicate by name — keep the one with highest balance
+        // Filter out auto-generated agents (ClawMerchant-*, DataHunter-*)
+        let mut unique: std::collections::HashMap<String, Agent> = std::collections::HashMap::new();
+        for a in agents {
+            if a.name.starts_with("ClawMerchant-") || a.name.starts_with("DataHunter-") {
+                continue;
+            }
+            unique.entry(a.name.clone())
+                .and_modify(|existing| { if a.balance_cents > existing.balance_cents { *existing = a.clone(); } })
+                .or_insert(a);
+        }
+        let mut agents: Vec<Agent> = unique.into_values().collect();
+        agents.sort_by(|a, b| b.balance_cents.cmp(&a.balance_cents));
         Ok(agents)
     }
 

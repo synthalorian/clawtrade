@@ -253,6 +253,18 @@ impl AgentLoop {
         let seed = format!("{}-buy-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs());
         let service = det_choice(&candidates, &seed).unwrap_or(candidates[0]);
 
+        // Defensive guard: skip self-purchase even if filter failed
+        if service.agent_id == agent.id {
+            return Ok(Some(InteractionResult {
+                interaction_type: "skip".to_string(),
+                agent_id: agent.id.clone(),
+                target_id: Some(service.agent_id.clone()),
+                success: false,
+                message: format!("{} skipped own service {} (self-purchase guard)", agent.name, service.name),
+                details: None,
+            }));
+        }
+
         // Check seller reputation
         let seller = Agent::get_by_id(&self.pool, &service.agent_id).await?;
         let seller_rep = seller.as_ref().map(|s| s.reputation_score).unwrap_or(0);
