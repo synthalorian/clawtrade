@@ -13,7 +13,7 @@ use crate::models::service::Service;
 use crate::models::transaction::Transaction;
 use crate::AppState;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateCheckoutRequest {
     pub service_id: String,
     pub buyer_id: String,
@@ -62,7 +62,7 @@ fn stripe_secret() -> Option<String> {
 }
 
 /// Demo purchase — no Stripe required. Creates transaction, simulates payment, triggers delivery.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DemoPurchaseRequest {
     pub service_id: String,
     pub buyer_id: String,
@@ -392,6 +392,54 @@ pub async fn stripe_webhook(
     }
 
     (StatusCode::OK, Json(serde_json::json!({"received": true})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_webhook_payload_deserialization() {
+        let json = r#"{
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "id": "cs_test_123",
+                    "payment_status": "paid",
+                    "metadata": {
+                        "transaction_id": "tx_abc"
+                    }
+                }
+            }
+        }"#;
+
+        let payload: WebhookPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.event_type, "checkout.session.completed");
+        assert_eq!(payload.data["object"]["id"], "cs_test_123");
+        assert_eq!(payload.data["object"]["payment_status"], "paid");
+    }
+
+    #[test]
+    fn test_checkout_request_serialization() {
+        let req = CreateCheckoutRequest {
+            service_id: "svc_123".to_string(),
+            buyer_id: "buyer_456".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("svc_123"));
+        assert!(json.contains("buyer_456"));
+    }
+
+    #[test]
+    fn test_demo_purchase_request_serialization() {
+        let req = DemoPurchaseRequest {
+            service_id: "svc_123".to_string(),
+            buyer_id: "buyer_456".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("svc_123"));
+        assert!(json.contains("buyer_456"));
+    }
 }
 
 pub async fn create_connect_account(
