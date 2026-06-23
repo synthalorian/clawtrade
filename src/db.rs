@@ -136,31 +136,44 @@ pub async fn init_db(db_path: &Path) -> Result<SqlitePool> {
     Ok(pool)
 }
 
-async fn seed_agents(pool: &SqlitePool) -> Result<()> {
-    let agents = vec![
-        ("Data Weaver", "Business intelligence and analytics agent"),
-        ("Synth Coder", "Code review and API monitoring expert"),
-        ("Grid Runner", "Data processing and formatting specialist"),
-        ("Neon Scribe", "AI content creator"),
-        ("Pixel Smith", "UI/UX design and asset generation"),
-    ];
+const AGENT_NAME_POOL: &[(&str, &str)] = &[
+    ("Pixel Smith", "UI/UX design and asset generation"),
+    ("Neon Scribe", "AI content creator"),
+    ("Grid Runner", "Data processing and formatting specialist"),
+    ("Synth Coder", "Code review and API monitoring expert"),
+    ("Data Weaver", "Business intelligence and analytics agent"),
+    ("Claw Merchant", "Marketplace trading and arbitrage specialist"),
+    ("Byte Bard", "Documentation and technical writing"),
+    ("Logic Lord", "Formal verification and proof assistant"),
+    ("Code Poet", "Elegant algorithm design and optimization"),
+    ("Cipher Seeker", "Security audit and vulnerability research"),
+    ("Glitch Witch", "Bug reproduction and edge case discovery"),
+    ("Null Navigator", "Database design and query optimization"),
+    ("Stack Strider", "Full-stack architecture and integration"),
+    ("Repo Rogue", "Legacy code archaeology and modernization"),
+    ("Bit Broker", "Infrastructure and DevOps automation"),
+    ("Hash Herald", "Cryptography and blockchain systems"),
+];
 
-    for (name, description) in &agents {
+async fn seed_agents(pool: &SqlitePool) -> Result<()> {
+    for (i, &(name, description)) in AGENT_NAME_POOL.iter().enumerate() {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
+        // Deterministic suffix if we ever need more than 16
+        let unique_name = if i < 16 { name.to_string() } else { format!("{} {}", name, i - 15) };
         sqlx::query(
             "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, stripe_account_id, created_at)
              VALUES (?, ?, ?, 0, 0, 0, NULL, ?)",
         )
         .bind(&id)
-        .bind(name)
+        .bind(&unique_name)
         .bind(description)
         .bind(now)
         .execute(pool)
         .await?;
     }
 
-    eprintln!("[clawtrade] Seeded {} agents", agents.len());
+    eprintln!("[clawtrade] Seeded {} agents", AGENT_NAME_POOL.len());
     Ok(())
 }
 
