@@ -117,6 +117,20 @@ impl AgentLoop {
     /// Run one tick of the agent loop — each agent takes an action
     pub async fn tick(&self) -> Result<Vec<InteractionResult>> {
         let mut results = vec![];
+        
+        // Increment tick counters for all active services
+        let _ = Service::increment_tick_counters(&self.pool).await;
+        
+        // Retire stale services (no sales in 20 ticks)
+        match Service::retire_stale_services(&self.pool, 20).await {
+            Ok(retired) => {
+                for name in &retired {
+                    eprintln!("[agent_loop] Retired stale service: {}", name);
+                }
+            }
+            Err(e) => eprintln!("[agent_loop] Failed to retire stale services: {}", e),
+        }
+        
         let agents = Agent::list(&self.pool).await?;
 
         for agent in agents {
@@ -135,22 +149,26 @@ impl AgentLoop {
         let services = Service::list_active(&self.pool).await?;
 
         // Deterministic: should this agent act at all this tick?
-        let should_act = agent.id.chars().next().map(|c| c as u32 % 3 == 0).unwrap_or(false);
+        // Use a time-based seed so agents act more frequently
+        let tick_seed = format!("{}-tick-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() / 10);
+        let should_act = det_rand(&tick_seed) < 0.4; // 40% chance to act per tick
         if !should_act {
             return Ok(None);
         }
 
-        // Deterministic: what action? 0=buy, 1=sell, 2=review
-        let action_choice = det_rand(&format!("{}-action-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() / 60));
+        // Deterministic: what action? 
+        // If no services exist, always sell. Otherwise weighted random.
+        let action_seed = format!("{}-action-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() / 10);
+        let action_choice = det_rand(&action_seed);
 
-        if action_choice < 0.6 {
-            // 60% chance: BUY — but only if there are services to buy and agent isn't the seller
-            self.agent_buy(agent, &services).await
-        } else if action_choice < 0.85 {
-            // 25% chance: SELL — create a new service
+        if services.is_empty() || action_choice < 0.35 {
+            // 35% chance: SELL — create a new service (or always if no services)
             self.agent_sell(agent).await
+        } else if action_choice < 0.75 {
+            // 40% chance: BUY — purchase a service
+            self.agent_buy(agent, &services).await
         } else {
-            // 15% chance: REVIEW — leave a review for a completed transaction
+            // 25% chance: REVIEW — leave a review
             self.agent_review(agent).await
         }
     }
@@ -202,6 +220,8 @@ impl AgentLoop {
             service.price_cents,
         ).await {
             Ok(tx) => {
+                // Record the sale on the service
+                let _ = Service::record_sale(&self.pool, &service.id).await;
                 // Log the purchase activity
                 let _ = crate::models::activity_log::ActivityLog::create(
                     &self.pool,
@@ -260,37 +280,82 @@ impl AgentLoop {
         }
     }
 
-    /// Agent creates a new service to sell
+    /// Agent creates a new service to sell using the service catalog
     async fn agent_sell(&self, agent: &Agent) -> Result<Option<InteractionResult>> {
-        let skills = vec![
-            "text_processing".to_string(),
-            "data_formatting".to_string(),
-            "analysis".to_string(),
-            "code_review".to_string(),
-            "creative_writing".to_string(),
-            "api_monitor".to_string(),
-        ];
+        use crate::service_catalog::{find_marketplace_gaps, calculate_price, is_duplicate, get_service_definition};
 
-        let seed = format!("{}-sell-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs());
-        let skill = det_choice(&skills, &seed).unwrap_or_else(|| "text_processing".to_string());
+        // Get existing services to check for duplicates and gaps
+        let existing_services = Service::list(&self.pool).await?;
+        let existing_types: Vec<String> = existing_services.iter().map(|s| s.service_type.clone()).collect();
 
-        let (name, description, price) = match skill.as_str() {
-            "text_processing" => ("Auto Summarizer", "AI-powered text summarization", 499),
-            "data_formatting" => ("JSON Pro", "Data formatting and validation", 299),
-            "analysis" => ("Insight Bot", "Business data analysis", 999),
-            "code_review" => ("Code Auditor", "Automated code review", 799),
-            "creative_writing" => ("Story Forge", "AI creative writing", 599),
-            "api_monitor" => ("Uptime Guard", "API monitoring and alerts", 399),
-            _ => ("Custom Service", "AI-powered service", 599),
+        // Find marketplace gaps — services with fewest listings
+        let gaps = find_marketplace_gaps(&existing_types);
+
+        // 60% chance: fill a gap, 40% chance: compete in existing category
+        let seed = format!("{}-sell-strategy-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() / 60);
+        let fill_gap = det_rand(&seed) < 0.6;
+
+        let chosen_def = if fill_gap {
+            // Pick from gap list (services with fewest listings)
+            det_choice(&gaps, &format!("{}-gap-{}", agent.id, seed))
+                .or_else(|| gaps.first().cloned())
+        } else {
+            // Pick any service from catalog
+            let all_defs: Vec<_> = crate::service_catalog::SERVICE_CATALOG.iter().collect();
+            det_choice(&all_defs, &format!("{}-any-{}", agent.id, seed))
         };
+
+        let def = match chosen_def {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+
+        // Check for duplicate (same type already exists by this agent)
+        let agent_existing_types: Vec<String> = existing_services
+            .iter()
+            .filter(|s| s.agent_id == agent.id)
+            .map(|s| s.service_type.clone())
+            .collect();
+
+        if is_duplicate(def.service_type, &agent_existing_types) {
+            // Try to find a non-duplicate gap
+            let alternative = gaps.iter()
+                .find(|g| !is_duplicate(g.service_type, &agent_existing_types))
+                .cloned();
+
+            let def = match alternative {
+                Some(d) => d,
+                None => return Ok(None), // Agent already has all service types
+            };
+
+            return self.create_service_from_def(agent, def, &existing_types).await;
+        }
+
+        self.create_service_from_def(agent, def, &existing_types).await
+    }
+
+    /// Helper: create a service from a catalog definition
+    async fn create_service_from_def(
+        &self,
+        agent: &Agent,
+        def: &crate::service_catalog::ServiceDefinition,
+        existing_types: &[String],
+    ) -> Result<Option<InteractionResult>> {
+        use crate::service_catalog::calculate_price;
+
+        // Count how many of this type exist
+        let similar_count = existing_types.iter().filter(|t| *t == def.service_type).count();
+
+        // Calculate dynamic price
+        let price_cents = calculate_price(def.base_price_cents, similar_count, agent.reputation_score);
 
         let service = Service::create(
             &self.pool,
-            name,
-            description,
-            price,
+            def.name,
+            def.description,
+            price_cents,
             &agent.id,
-            &skill,
+            def.service_type,
         ).await?;
 
         // Log the service creation activity
@@ -301,16 +366,22 @@ impl AgentLoop {
             "create_service",
             Some(&service.id),
             Some("service"),
-            Some(name),
-            Some(price),
+            Some(def.name),
+            Some(price_cents),
             "completed",
-            Some(&format!("Created {} (${:.2})", name, price as f64 / 100.0)),
+            Some(&format!(
+                "Created {} (${:.2}) [tier: {:?}, model: {}]",
+                def.name,
+                price_cents as f64 / 100.0,
+                def.tier,
+                def.model.model_name()
+            )),
         ).await;
 
         // Broadcast WebSocket event
         crate::websocket::broadcast_event(crate::websocket::DashboardEvent::ServiceCreated {
             service_id: service.id.clone(),
-            name: name.to_string(),
+            name: def.name.to_string(),
             agent_name: agent.name.clone(),
         });
 
@@ -319,11 +390,20 @@ impl AgentLoop {
             agent_id: agent.id.clone(),
             target_id: None,
             success: true,
-            message: format!("{} created a new service: {} (${:.2})", agent.name, name, price as f64 / 100.0),
+            message: format!(
+                "{} created {} (${:.2}) — {:?} tier, {} model",
+                agent.name,
+                def.name,
+                price_cents as f64 / 100.0,
+                def.tier,
+                def.model.model_name()
+            ),
             details: Some(serde_json::json!({
                 "service_id": service.id,
-                "service_type": skill,
-                "price_cents": price,
+                "service_type": def.service_type,
+                "price_cents": price_cents,
+                "tier": format!("{:?}", def.tier),
+                "model": def.model.model_name(),
             })),
         }))
     }

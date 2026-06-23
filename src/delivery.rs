@@ -83,7 +83,8 @@ pub async fn trigger_delivery(pool: &SqlitePool, transaction_id: &str) -> Result
     }
 }
 
-/// Execute a service directly without purchase (for demo/try-before-you-buy)
+/// Execute a service directly using the service catalog's prompt template and model routing.
+/// This is the primary service delivery engine for ClawTrade v2.0.
 pub async fn execute_service_direct(
     pool: &SqlitePool,
     service_id: &str,
@@ -96,18 +97,50 @@ pub async fn execute_service_direct(
         }
     };
 
-    // Execute based on service type with user input
-    match service.service_type.as_str() {
-        "text_processing" => execute_text_processing(&service, user_input).await,
-        "data_formatting" => execute_data_formatting(&service, user_input).await,
-        "code_review" => execute_code_review(&service, user_input).await,
-        "creative_writing" => execute_creative_writing(&service, user_input).await,
-        "analysis" => execute_analysis(&service, user_input).await,
-        "api_monitor" => execute_api_monitor(&service, user_input).await,
-        _ => Ok(format!(
-            "=== Service Execution ===\n\nService: {}\nType: {}\n\nYour input:\n{}\n\n(This service type doesn't have a custom executor yet.)",
-            service.name, service.service_type, user_input
-        )),
+    // Look up the service definition in the catalog
+    let def = match crate::service_catalog::get_service_definition(&service.service_type) {
+        Some(d) => d,
+        None => {
+            // Fallback to generic delivery for legacy services not in catalog
+            return Ok(format!(
+                "=== Service Execution ===\n\nService: {}\nType: {}\n\nYour input:\n{}\n\n(This service type doesn't have a catalog entry yet.)",
+                service.name, service.service_type, user_input
+            ));
+        }
+    };
+
+    // Build the LLM client and deliver using the catalog's prompt template + model routing
+    let client = LlmClient::new();
+    let start = std::time::Instant::now();
+
+    match client.deliver_service(def, user_input).await {
+        Ok(result) => {
+            let execution_time_ms = start.elapsed().as_millis() as u64;
+            let model_name = def.model.model_name();
+            let tier_label = match def.tier {
+                crate::service_catalog::ServiceTier::MicroTask => "Micro-Task",
+                crate::service_catalog::ServiceTier::RealWork => "Real Work",
+                crate::service_catalog::ServiceTier::HeavyLifting => "Heavy Lifting",
+                crate::service_catalog::ServiceTier::LocalOnly => "Local-Only",
+            };
+
+            Ok(format!(
+                "=== {} Result ===\n\n📝 Your Input:\n{}\n\n✨ Generated Output:\n{}\n\n---\n⏱️ Execution time: {}ms\n🏷️ Tier: {}\n🧠 Model: {}\n💡 Powered by local LLM inference — no cloud API calls",
+                service.name,
+                user_input,
+                result,
+                execution_time_ms,
+                tier_label,
+                model_name,
+            ))
+        }
+        Err(e) => {
+            eprintln!("[delivery] LLM failed for {}: {}", service.service_type, e);
+            Ok(format!(
+                "=== {} Result ===\n\n📝 Your Input:\n{}\n\n⚠️ LLM delivery failed: {}\n\nFalling back to generic response...\n\nService: {}\nDescription: {}\n",
+                service.name, user_input, e, service.name, service.description
+            ))
+        }
     }
 }
 
