@@ -18,6 +18,10 @@ pub enum DashboardEvent {
     PaymentConfirmed { tx_id: String, service_name: String, amount_cents: i64 },
     DeliveryCompleted { tx_id: String, service_type: String },
     AgentConnected { agent_id: String, agent_name: String },
+    AgentReasoning { agent_id: String, agent_name: String, action: String, reasoning: String },
+    InferenceStarted { service_name: String, model: String, estimated_tokens: i64 },
+    InferenceCompleted { service_name: String, model: String, actual_tokens: i64, duration_ms: i64 },
+    ModelFallback { requested: String, fallback_reason: String },
 }
 
 pub type EventTx = broadcast::Sender<DashboardEvent>;

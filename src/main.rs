@@ -10,6 +10,7 @@ mod api;
 mod dashboard;
 mod db;
 mod delivery;
+mod hermes_bridge;
 mod models;
 mod monitor;
 mod nvidia;
@@ -21,16 +22,19 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub llm: Arc<nvidia::LlmClient>,
     pub agent_loop: Arc<Mutex<agent_loop::AgentLoop>>,
+    pub hermes: Arc<hermes_bridge::HermesBridge>,
 }
 
 impl AppState {
     pub fn new(pool: SqlitePool) -> Self {
         let llm = Arc::new(nvidia::LlmClient::new());
         let agent_loop = Arc::new(Mutex::new(agent_loop::AgentLoop::new(pool.clone())));
+        let hermes = Arc::new(hermes_bridge::HermesBridge::new(llm.clone()));
         Self {
             pool,
             llm,
             agent_loop,
+            hermes,
         }
     }
 }
@@ -60,6 +64,12 @@ async fn main() -> Result<()> {
     }
 
     let state = Arc::new(AppState::new(pool));
+
+    // Wire Hermes bridge into agent loop
+    {
+        let mut loop_guard = state.agent_loop.lock().await;
+        loop_guard.hermes = Some(state.hermes.clone());
+    }
 
     // Use centralized API routes
     let api_routes = api::routes(state.clone());

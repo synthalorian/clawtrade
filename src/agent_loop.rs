@@ -17,6 +17,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
+use std::sync::Arc;
+
 use crate::models::agent::Agent;
 use crate::models::service::Service;
 use crate::models::transaction::Transaction;
@@ -119,11 +121,17 @@ fn det_choice<T: Clone>(items: &[T], seed: &str) -> Option<T> {
 /// The agent loop engine — drives autonomous marketplace activity
 pub struct AgentLoop {
     pub pool: SqlitePool,
+    pub hermes: Option<Arc<crate::hermes_bridge::HermesBridge>>,
 }
 
 impl AgentLoop {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self { pool, hermes: None }
+    }
+
+    pub fn with_hermes(mut self, hermes: Arc<crate::hermes_bridge::HermesBridge>) -> Self {
+        self.hermes = Some(hermes);
+        self
     }
 
     /// Initialize agent states from database
@@ -183,33 +191,89 @@ impl AgentLoop {
         Ok(results)
     }
 
-    /// A single agent takes an action based on its current state.
-    /// Agents can: create services (sell), buy services, or leave reviews.
-    /// The action is deterministic based on agent ID hash for reproducibility.
+    /// A single agent takes an action based on LLM reasoning via the Hermes bridge.
+    /// If Hermes is not available, falls back to deterministic dice-roll behavior.
     async fn agent_action(&self, agent: &Agent) -> Result<Option<InteractionResult>> {
         let services = Service::list_active(&self.pool).await?;
 
+        // Try LLM reasoning first if Hermes bridge is available
+        if let Some(ref hermes) = self.hermes {
+            // Determine role based on agent state
+            let role = if agent.balance_cents > 50 && services.len() > 5 {
+                "buyer"
+            } else if agent.total_sales > 0 {
+                "creator"
+            } else {
+                "creator"
+            };
+
+            match hermes.reason(&self.pool, agent, role).await {
+                Ok(decision) => {
+                    // Log the reasoning to activity_log so judges can read WHY
+                    let _ = crate::models::activity_log::ActivityLog::create(
+                        &self.pool,
+                        &agent.id,
+                        &agent.name,
+                        "agent_reasoning",
+                        None,
+                        Some("decision"),
+                        Some(&decision.action),
+                        None,
+                        "completed",
+                        Some(&format!(
+                            "[LLM] {} decided to {}. Reasoning: {} | Target: {:?} | Strategy: {:?}",
+                            agent.name,
+                            decision.action,
+                            decision.reasoning,
+                            decision.target,
+                            decision.price_strategy
+                        )),
+                    ).await;
+
+                    // Broadcast reasoning event
+                    crate::websocket::broadcast_event(crate::websocket::DashboardEvent::AgentReasoning {
+                        agent_id: agent.id.clone(),
+                        agent_name: agent.name.clone(),
+                        action: decision.action.clone(),
+                        reasoning: decision.reasoning.clone(),
+                    });
+
+                    // Execute the decided action
+                    match decision.action.as_str() {
+                        "CREATE_SERVICE" => self.agent_sell(agent).await,
+                        "PURCHASE" => self.agent_buy(agent, &services).await,
+                        "REVIEW" => self.agent_review(agent).await,
+                        "HOLD" | _ => Ok(None),
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[agent_loop] Hermes reasoning failed for {}: {}. Falling back to dice-roll.", agent.name, e);
+                    self.fallback_agent_action(agent, &services).await
+                }
+            }
+        } else {
+            // No Hermes bridge — fallback to deterministic dice-roll
+            self.fallback_agent_action(agent, &services).await
+        }
+    }
+
+    /// Fallback deterministic behavior when LLM is unavailable
+    async fn fallback_agent_action(&self, agent: &Agent, services: &[Service]) -> Result<Option<InteractionResult>> {
         // Deterministic: should this agent act at all this tick?
-        // Use a time-based seed so agents act more frequently
         let tick_seed = format!("{}-tick-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() / 10);
-        let should_act = det_rand(&tick_seed) < 0.4; // 40% chance to act per tick
+        let should_act = det_rand(&tick_seed) < 0.4;
         if !should_act {
             return Ok(None);
         }
 
-        // Deterministic: what action? 
-        // If no services exist, always sell. Otherwise weighted random.
         let action_seed = format!("{}-action-{}", agent.id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() / 10);
         let action_choice = det_rand(&action_seed);
 
         if services.is_empty() || action_choice < 0.35 {
-            // 35% chance: SELL — create a new service (or always if no services)
             self.agent_sell(agent).await
         } else if action_choice < 0.75 {
-            // 40% chance: BUY — purchase a service
-            self.agent_buy(agent, &services).await
+            self.agent_buy(agent, services).await
         } else {
-            // 25% chance: REVIEW — leave a review
             self.agent_review(agent).await
         }
     }

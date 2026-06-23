@@ -69,3 +69,13 @@ pub async fn analyze(
         ),
     }
 }
+
+pub async fn inference_history(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let history = state.llm.get_inference_history().await;
+    (StatusCode::OK, Json(serde_json::json!({
+        "history": history,
+        "count": history.len(),
+    })))
+}
