@@ -486,7 +486,7 @@ impl LlmClient {
             .map(NvidiaClient::new);
 
         let local_url = std::env::var("LLM_LOCAL_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+            .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string()); // Default to sandboxed proxy
         let local_model = std::env::var("LLM_LOCAL_MODEL")
             .unwrap_or_else(|_| "qwen3.5-9b-131k".to_string());
 
