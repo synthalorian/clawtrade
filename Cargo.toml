@@ -53,5 +53,8 @@ rand = "0.8"
 regex = "1"
 lazy_static = "1"
 
+# Rate limiting
+governor = "0.10"
+
 [dev-dependencies]
 tokio-test = "0.4"

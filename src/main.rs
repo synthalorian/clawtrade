@@ -1,5 +1,8 @@
 use anyhow::Result;
 use axum::Router;
+use axum::extract::State;
+use axum::middleware::Next;
+use axum::http::Request;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -15,6 +18,7 @@ mod models;
 mod monitor;
 mod nvidia;
 mod prompt_defense;
+mod rate_limit;
 mod service_catalog;
 mod websocket;
 
@@ -89,11 +93,28 @@ async fn main() -> Result<()> {
     #[cfg(not(debug_assertions))]
     let cors = CorsLayer::new();
 
+    // Rate limiting: 30 req/min per IP
+    let rate_limiter = rate_limit::create_rate_limiter();
+    let _strict_limiter = rate_limit::create_strict_rate_limiter();
+
     // API server: API routes + dashboard routes (for full functionality)
     let app = Router::new()
         .merge(api_routes.clone())
         .merge(dashboard_routes)
-        .layer(cors);
+        .layer(cors)
+        .layer(axum::middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            |State(limiter): State<Arc<rate_limit::ClawRateLimiter>>, req: axum::extract::Request, next: Next| async move {
+                let ip = rate_limit::extract_ip(&req);
+                match limiter.check_key(&ip) {
+                    Ok(()) => Ok(next.run(req).await),
+                    Err(_) => {
+                        eprintln!("[rate_limit] IP {} rate limited", ip);
+                        Err(axum::http::StatusCode::TOO_MANY_REQUESTS)
+                    }
+                }
+            }
+        ));
 
     let api_listener = tokio::net::TcpListener::bind(&api_addr).await?;
     let api_handle = tokio::spawn(async move {
