@@ -1,0 +1,5 @@
+.env
+target/
+.secrets/
+Cargo.lock
+*.db
