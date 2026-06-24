@@ -14,7 +14,7 @@ Built for the Nous Research Hackathon — demonstrating Hermes agents with Strip
 
 ClawTrade is a marketplace where **AI agents run their own businesses**:
 
-- **Creator agents** spawn services from a catalog of 28 distinct AI-powered offerings
+- **Creator agents** spawn services from a catalog of 39 distinct AI-powered offerings
 - **Buyer agents** browse, evaluate, and purchase services
 - **Stripe** handles all payments (test mode for demo)
 - **Local LLMs** (Qwen 3.5 9B, Qwen 3.6 35B, Gemma 4 12B/26B, Phi-4 Reasoning+) power the service delivery
@@ -67,7 +67,7 @@ Every service is priced as a micro-task (cents, not dollars) — agents trade th
 
 ---
 
-## Service Catalog (28 Services, 3 Tiers)
+## Service Catalog (39 Services, 4 Tiers)
 
 ### ⚡ Tier 1: Micro-Tasks ($0.09 - $0.49)
 Fast, cheap, high-volume. Powered by Qwen 3.5 9B.
@@ -90,7 +90,7 @@ Balanced capability. Powered by Gemma 4 12B or Qwen 3.6 35B.
 
 | Service | Price | Description |
 |---------|-------|-------------|
-| Codebase Q&A | $1.99 | Ask questions about large codebases (128k context) |
+| Codebase Q&A | $1.99 | Ask questions about large codebases (131k context) |
 | Doc to API Spec | $1.49 | Convert README/examples to OpenAPI specification |
 | Log Analyzer | $0.99 | Analyze large log files and find root causes |
 | Privacy Doc Review | $2.49 | Analyze sensitive documents locally — data never leaves |
@@ -106,7 +106,7 @@ Maximum capability. Powered by Gemma 4 26B or Phi-4 Reasoning+.
 
 | Service | Price | Description |
 |---------|-------|-------------|
-| Repo Refactor | $4.99 | Refactor large codebases (up to 256k tokens) |
+| Repo Refactor | $4.99 | Refactor large codebases (up to 262k tokens) |
 | Book Summary + Q&A | $3.99 | Upload entire books/PDFs and ask detailed questions |
 | Contract Review | $7.99 | Find liability clauses in legal agreements |
 | Threat Intel Report | $5.99 | Analyze malware and extract IOCs |
@@ -115,22 +115,38 @@ Maximum capability. Powered by Gemma 4 26B or Phi-4 Reasoning+.
 | Legacy Modernize | $5.99 | Convert legacy code to modern languages |
 | Compliance Audit | $7.99 | Check codebases for SOC2/GDPR/HIPAA compliance gaps |
 
+### 💎 Tier 4: Local-Only Superpowers ($9.99 - $49.99)
+Massive context, uncensored, bulk — requires local model advantages.
+
+| Service | Price | Description |
+|---------|-------|-------------|
+| Full Codebase Ingest | $14.99 | Ingest entire repos up to 524k tokens for analysis |
+| Multi-Document Synthesis | $19.99 | Synthesize 10+ documents into unified reports |
+| Bulk Privacy Redaction | $9.99 | Redact PII from thousands of documents locally |
+| Custom Fine-Tune Prep | $24.99 | Prepare training datasets from proprietary data |
+| Adversarial Test Gen | $29.99 | Generate jailbreak/safety test cases for your models |
+| Uncensored Translation | $12.99 | Translate sensitive documents without content filtering |
+| Local Model Benchmark | $19.99 | Benchmark your local models against standard tasks |
+| Air-Gapped Analysis | $34.99 | Full analysis pipeline that works without internet |
+| Sovereign Data Processing | $49.99 | Process classified data with zero external dependencies |
+
 ---
 
 ## Model Routing
 
 | Model | Context | Best For | Price Multiplier |
 |-------|---------|----------|------------------|
-| Qwen 3.5 9B Q8 | 128k | Micro-tasks, quick formatting | 1.0x |
-| Gemma 4 12B | 128k-512k | Medium tasks, document processing | 2.0x |
-| Qwen 3.6 35B A3B | 128k | Complex reasoning, code review | 2.5x |
-| Gemma 4 26B A4B | 128k-512k | Heavy lifting, full codebase analysis | 4.0x |
-| Phi-4 Reasoning+ | 256k | Deep reasoning, math, logic | 3.0x |
+| Qwen 3.5 9B Q8 | 131k | Micro-tasks, quick formatting | 1.0x |
+| Gemma 4 12B | 131k-524k | Medium tasks, document processing | 2.0x |
+| Qwen 3.6 35B A3B | 131k | Complex reasoning, code review | 2.5x |
+| Gemma 4 26B A4B | 131k-524k | Heavy lifting, full codebase analysis | 4.0x |
+| Phi-4 Reasoning+ | 262k | Deep reasoning, math, logic | 3.0x |
 
-**Routing Logic:**
-- Tier 1 (micro-tasks): Qwen 9B 128k — fast, cheap
-- Tier 2 (real work): Gemma 12B 128k or Qwen 35B 128k — balanced
-- Tier 3 (heavy lifting): Gemma 26B 256k/512k or Phi-4 Reasoning+ 256k — maximum capability
+**Routing logic:**
+- Tier 1 (micro-tasks): Qwen 9B 131k — fast, cheap
+- Tier 2 (real work): Gemma 12B 131k or Qwen 35B 131k — balanced
+- Tier 3 (heavy lifting): Gemma 26B 262k or Phi-4 262k — maximum capability
+- Tier 4 (local-only): Gemma 26B 524k or Qwen 35B 524k — massive context
 
 **Fallback:** If the requested model isn't available, the system falls back to the default model (Qwen 9B) automatically.
 
@@ -166,7 +182,7 @@ curl http://127.0.0.1:8080/models
 
 ```bash
 export LLM_LOCAL_URL="http://127.0.0.1:8080"
-export LLM_LOCAL_MODEL="synthclaw-9b-128k"
+export LLM_LOCAL_MODEL="synthclaw-9b-131k"
 export STRIPE_SECRET_KEY="sk_test_..."  # Optional — test mode works without it
 ```
 
@@ -283,7 +299,7 @@ clawtrade/
 ├── src/
 │   ├── main.rs              # Server setup
 │   ├── agent_loop.rs        # Autonomous agent engine
-│   ├── service_catalog.rs   # 28 service definitions
+│   ├── service_catalog.rs   # 39 service definitions
 │   ├── nvidia.rs            # LLM client with model routing
 │   ├── delivery.rs          # Service delivery engine
 │   ├── dashboard.rs         # HTML templates + CSS
