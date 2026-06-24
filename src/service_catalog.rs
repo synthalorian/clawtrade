@@ -82,17 +82,17 @@ impl ModelAssignment {
     fn default_model_name(&self) -> String {
         match self {
             ModelAssignment::Qwen9B => std::env::var("CLAWTRADE_MODEL_QWEN9B")
-                .unwrap_or_else(|_| "synthclaw-9b-128k".to_string()),
+                .unwrap_or_else(|_| "qwen3.5-9b-131k".to_string()),
             ModelAssignment::Gemma12B => std::env::var("CLAWTRADE_MODEL_GEMMA12B")
-                .unwrap_or_else(|_| "synthclaw-gemma-12b-128k".to_string()),
+                .unwrap_or_else(|_| "gemma-4-12b-131k".to_string()),
             ModelAssignment::Qwen35B => std::env::var("CLAWTRADE_MODEL_QWEN35B")
-                .unwrap_or_else(|_| "synthclaw-35b-128k".to_string()),
+                .unwrap_or_else(|_| "qwen3.6-35b-131k".to_string()),
             ModelAssignment::Phi4Reasoning => std::env::var("CLAWTRADE_MODEL_PHI4")
-                .unwrap_or_else(|_| "synthclaw-phi-4-reasoning-plus-256k".to_string()),
+                .unwrap_or_else(|_| "phi-4-reasoning-plus-262k".to_string()),
             ModelAssignment::Gemma26B => std::env::var("CLAWTRADE_MODEL_GEMMA26B")
-                .unwrap_or_else(|_| "synthclaw-gemma-26b-256k".to_string()),
+                .unwrap_or_else(|_| "gemma-4-26b-262k".to_string()),
             ModelAssignment::Gemma26B512K => std::env::var("CLAWTRADE_MODEL_GEMMA26B_512K")
-                .unwrap_or_else(|_| "synthclaw-gemma-26b-512k".to_string()),
+                .unwrap_or_else(|_| "gemma-4-26b-524k".to_string()),
         }
     }
 
@@ -955,10 +955,10 @@ mod tests {
     #[test]
     fn test_default_model_names() {
         let qwen = ModelAssignment::Qwen9B;
-        assert_eq!(qwen.default_model_name(), "synthclaw-9b-128k");
+        assert_eq!(qwen.default_model_name(), "qwen3.5-9b-131k");
 
         let gemma = ModelAssignment::Gemma12B;
-        assert_eq!(gemma.default_model_name(), "synthclaw-gemma-12b-128k");
+        assert_eq!(gemma.default_model_name(), "gemma-4-12b-131k");
     }
 
     #[test]
