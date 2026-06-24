@@ -1,0 +1,23 @@
+app = "clawtrade"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  CLAWTRADE_API_ADDR = "0.0.0.0:8080"
+  CLAWTRADE_DASHBOARD_ADDR = "0.0.0.0:8080"
+  RUST_LOG = "info"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
