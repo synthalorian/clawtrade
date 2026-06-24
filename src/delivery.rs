@@ -113,10 +113,26 @@ pub async fn execute_service_direct(
         }
     };
 
+    // 🛡️ PROMPT INJECTION DEFENSE — sanitize user input before LLM consumption
+    let sanitized_input = match crate::prompt_defense::sanitize_input(user_input) {
+        crate::prompt_defense::SanitizationResult::Clean(cleaned) => cleaned,
+        crate::prompt_defense::SanitizationResult::Sanitized { cleaned, violations, .. } => {
+            eprintln!("[prompt_defense] Input sanitized. Violations: {:?}", violations);
+            cleaned
+        }
+        crate::prompt_defense::SanitizationResult::Blocked { reason, violations } => {
+            eprintln!("[prompt_defense] Input blocked: {}. Violations: {:?}", reason, violations);
+            return Ok(crate::prompt_defense::blocked_message(&violations));
+        }
+    };
+
+    // Harden the system prompt against injection
+    let hardened_system = crate::prompt_defense::harden_system_prompt(def.system_prompt);
+
     // Deliver using the shared LLM client + catalog's prompt template + model routing
     let start = std::time::Instant::now();
 
-    match llm.deliver_service(def, user_input).await {
+    match llm.deliver_service_with_prompt(&def.model, &hardened_system, &def.user_prompt_template.replace("{input}", &sanitized_input)).await {
         Ok(result) => {
             let execution_time_ms = start.elapsed().as_millis() as u64;
             let model_name = def.model.model_name();

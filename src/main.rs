@@ -14,6 +14,7 @@ mod hermes_bridge;
 mod models;
 mod monitor;
 mod nvidia;
+mod prompt_defense;
 mod service_catalog;
 mod websocket;
 

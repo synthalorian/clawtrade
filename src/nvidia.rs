@@ -678,6 +678,28 @@ impl LlmClient {
             .chat_with_model(&model, system, &user, max_tokens)
             .await
     }
+
+    /// Deliver a service with a custom (hardened) system prompt and pre-sanitized user prompt.
+    /// Used by the prompt injection defense layer to ensure user input is isolated
+    /// and system instructions are reinforced against override attempts.
+    pub async fn deliver_service_with_prompt(
+        &self,
+        model_assignment: &crate::service_catalog::ModelAssignment,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String> {
+        let model = model_assignment.model_name();
+        let max_tokens = 2048; // Default max tokens for hardened delivery
+
+        eprintln!(
+            "[llm] Delivering with hardened prompt using model {}",
+            model
+        );
+
+        self.local
+            .chat_with_model(&model, system_prompt, user_prompt, max_tokens)
+            .await
+    }
 }
 
 #[cfg(test)]
