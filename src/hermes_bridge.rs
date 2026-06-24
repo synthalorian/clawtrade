@@ -204,8 +204,8 @@ impl HermesBridge {
         // Build the prompt
         let prompt = self.build_reasoning_prompt(agent, &skill, &market_state);
 
-        // Call LLM
-        let response = match self.llm.agent_reasoning(&prompt).await {
+        // Call LLM with agent name for inference tracking
+        let response = match self.llm.agent_reasoning(&agent.name, &prompt).await {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("[hermes_bridge] LLM reasoning failed for {}: {}. Using fallback.", agent.name, e);

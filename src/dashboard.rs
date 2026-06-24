@@ -919,11 +919,7 @@ function initBuyButtons() {
     btn.removeAttribute("href");
     btn.addEventListener("click", (e) => {
       e.preventDefault();
-      if (isLinked()) {
-        window.location.href = href;
-      } else {
-        showLinkAccountModal();
-      }
+      demoPurchase(serviceId);
     });
   });
 }
@@ -1056,7 +1052,7 @@ async function runLiveDemo(serviceId) {
   const modal = document.createElement("div");
   modal.id = "live-demo-modal";
   modal.className = "modal-overlay";
-  modal.innerHTML = '<div class="modal-box" style="max-width:700px;"><h3 style="color:var(--accent);margin-bottom:1rem;">⚡ Live Demo</h3><div id="live-demo-loading" style="text-align:center;padding:2rem;"><div style="font-size:2rem;margin-bottom:1rem;">🦞</div><div>Running service with local LLM...</div><div style="font-size:0.8rem;margin-top:0.5rem;color:var(--muted);">This may take 3-5 seconds</div></div><div id="live-demo-error" style="display:none;color:var(--accent-2);padding:1rem;"></div><div id="live-demo-content" style="display:none;"><div style="margin-bottom:1rem;"><div class="sample-label">Service</div><div id="live-demo-service" style="color:var(--accent);font-weight:700;"></div></div><div style="margin-bottom:1rem;"><div class="sample-label">Input</div><pre id="live-demo-input" class="sample-code"></pre></div><div style="margin-bottom:1rem;"><div class="sample-label">Output</div><pre id="live-demo-output" class="sample-code" style="white-space:pre-wrap;max-height:300px;overflow:auto;"></pre></div><div style="display:flex;gap:1rem;justify-content:space-between;align-items:center;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);"><span id="live-demo-meta" style="color:var(--muted);font-size:0.8rem;"></span><button onclick="document.getElementById(\'live-demo-modal\').remove()" class="btn btn-secondary">Close</button></div></div></div>';
+  modal.innerHTML = '<div class="modal-box" style="max-width:700px;"><h3 style="color:var(--accent);margin-bottom:1rem;">⚡ Live Demo</h3><div id="live-demo-loading" style="text-align:center;padding:2rem;"><div style="font-size:2rem;margin-bottom:1rem;">🦞</div><div>Running service with local LLM...</div><div style="font-size:0.8rem;margin-top:0.5rem;color:var(--muted);">This may take a moment</div></div><div id="live-demo-error" style="display:none;color:var(--accent-2);padding:1rem;"></div><div id="live-demo-content" style="display:none;"><div style="margin-bottom:1rem;"><div class="sample-label">Service</div><div id="live-demo-service" style="color:var(--accent);font-weight:700;"></div></div><div style="margin-bottom:1rem;"><div class="sample-label">Input</div><pre id="live-demo-input" class="sample-code"></pre></div><div style="margin-bottom:1rem;"><div class="sample-label">Output</div><pre id="live-demo-output" class="sample-code" style="white-space:pre-wrap;max-height:300px;overflow:auto;"></pre></div><div style="display:flex;gap:1rem;justify-content:space-between;align-items:center;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);"><span id="live-demo-meta" style="color:var(--muted);font-size:0.8rem;"></span><button onclick="document.getElementById(\'live-demo-modal\').remove()" class="btn btn-secondary">Close</button></div></div></div>';
   document.body.appendChild(modal);
   modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
   try {
@@ -2082,16 +2078,24 @@ pub async fn inference_monitor_page(State(state): State<Arc<AppState>>) -> Html<
   </table>
 </div>
 <script>
-const ws = new WebSocket((window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host.replace(':8746',':3000') + '/ws');
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const wsHost = window.location.host.includes(':') ? window.location.host.replace(':8746',':3000') : window.location.host;
+const ws = new WebSocket(wsProtocol + '//' + wsHost + '/ws');
 const activeContainer = document.getElementById('active-inferences');
 const historyBody = document.getElementById('history-body');
 
 fetch('/api/inference/history')
-  .then(r => r.json())
+  .then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
   .then(data => {
     if (data.history && data.history.length > 0) {
       data.history.reverse().forEach(addHistoryRow);
     }
+  })
+  .catch(e => {
+    console.error('[inference] Failed to load history:', e);
   });
 
 ws.onmessage = (event) => {
