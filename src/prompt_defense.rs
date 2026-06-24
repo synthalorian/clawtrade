@@ -286,7 +286,7 @@ fn clean_input(input: &str) -> String {
     cleaned = cleaned.replace('\0', "");
     
     // Normalize newlines
-    cleaned = cleaned.replace("\r\n", "\n").replace('\r', '\n');
+    cleaned = cleaned.replace("\r\n", "\n").replace('\r', "\n");
     
     // Remove control characters except newline and tab
     cleaned = cleaned
