@@ -32,7 +32,7 @@ pub fn dashboard_router(state: Arc<AppState>) -> Router {
         .route("/agent-loop", get(agent_loop_page))
         .route("/activity", get(activity_page))
         .route("/inference", get(inference_monitor_page))
-        .route("/api/inference/history", get(inference_history_api))
+        // NOTE: /api/inference/history is defined in api::routes() — don't duplicate
         .with_state(state)
 }
 
