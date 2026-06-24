@@ -95,7 +95,6 @@ async fn main() -> Result<()> {
 
     // Rate limiting: 30 req/min per IP
     let rate_limiter = rate_limit::create_rate_limiter();
-    let _strict_limiter = rate_limit::create_strict_rate_limiter();
 
     // API server: API routes + dashboard routes (for full functionality)
     let app = Router::new()
