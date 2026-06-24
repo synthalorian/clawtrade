@@ -231,8 +231,8 @@ impl AgentLoop {
         // Increment tick counters for all active services
         let _ = Service::increment_tick_counters(&self.pool).await;
         
-        // Retire stale services (no sales in 20 ticks)
-        match Service::retire_stale_services(&self.pool, 20).await {
+        // Retire stale services (no sales in 888 ticks ~ 3.7 hours)
+        match Service::retire_stale_services(&self.pool, 888).await {
             Ok(retired) => {
                 for name in &retired {
                     eprintln!("[agent_loop] Retired stale service: {}", name);

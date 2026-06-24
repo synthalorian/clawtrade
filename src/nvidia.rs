@@ -488,7 +488,7 @@ impl LlmClient {
         let local_url = std::env::var("LLM_LOCAL_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string()); // Default to sandboxed proxy
         let local_model = std::env::var("LLM_LOCAL_MODEL")
-            .unwrap_or_else(|_| "qwen3.5-9b-131k".to_string());
+            .unwrap_or_else(|_| "synthclaw-9b-131k".to_string());
 
         Self {
             nvidia,
@@ -503,11 +503,12 @@ impl LlmClient {
         history.iter().rev().take(50).cloned().collect()
     }
 
-    #[allow(dead_code)]
-    pub async fn agent_reasoning(&self, prompt: &str) -> Result<String> {
+    /// Run LLM reasoning for an agent decision. Records inference history
+    /// and broadcasts WebSocket events with the agent's name for visibility.
+    pub async fn agent_reasoning(&self, agent_name: &str, prompt: &str) -> Result<String> {
         let start = std::time::Instant::now();
         let estimated_tokens = prompt.len() as i64 / 4;
-        let service_name = "agent_reasoning".to_string();
+        let service_name = format!("agent_reasoning:{}", agent_name);
         let model = self.local.model.clone();
         let tier = infer_tier_from_model(&model);
 
@@ -561,14 +562,60 @@ impl LlmClient {
         result
     }
 
+    /// Summarize text using local LLM. Records inference history and broadcasts events.
     pub async fn summarize(&self, text: &str) -> Result<String> {
-        if let Some(ref nvidia) = self.nvidia {
+        let start = std::time::Instant::now();
+        let estimated_tokens = text.len() as i64 / 4;
+        let service_name = "summarize".to_string();
+        let model = self.local.model.clone();
+        let tier = infer_tier_from_model(&model);
+
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceStarted {
+            service_name: service_name.clone(),
+            model: model.clone(),
+            estimated_tokens,
+        });
+
+        let result = if let Some(ref nvidia) = self.nvidia {
             match nvidia.summarize_text(text).await {
-                Ok(res) => return Ok(res),
-                Err(e) => eprintln!("[llm] NVIDIA fallback to local: {}", e),
+                Ok(res) => Ok(res),
+                Err(e) => {
+                    eprintln!("[llm] NVIDIA fallback to local: {}", e);
+                    self.local.chat_simple(&format!("Summarize: {}", text)).await
+                }
             }
+        } else {
+            self.local.chat_simple(&format!("Summarize: {}", text)).await
+        };
+
+        let duration_ms = start.elapsed().as_millis() as i64;
+        let actual_tokens = result.as_ref().map(|r| r.len() as i64 / 4).unwrap_or(0);
+
+        {
+            let mut history = self.inference_history.lock().await;
+            history.push(InferenceRecord {
+                service_name: service_name.clone(),
+                model: model.clone(),
+                start_time: chrono::Utc::now() - chrono::Duration::milliseconds(duration_ms),
+                end_time: Some(chrono::Utc::now()),
+                estimated_tokens,
+                actual_tokens: result.as_ref().ok().map(|_| actual_tokens),
+                status: if result.is_ok() { "completed".to_string() } else { "failed".to_string() },
+                fallback_reason: None,
+                tier: tier.to_string(),
+                duration_ms,
+            });
+            if history.len() > 50 { history.remove(0); }
         }
-        self.local.chat_simple(&format!("Summarize: {}", text)).await
+
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
+            service_name: service_name.clone(),
+            model: model.clone(),
+            actual_tokens,
+            duration_ms,
+        });
+
+        result
     }
 
     #[allow(dead_code)]
@@ -584,16 +631,60 @@ impl LlmClient {
             .await
     }
 
+    /// Analyze market data using local LLM. Records inference history and broadcasts events.
     pub async fn analyze_market(&self, data: &str) -> Result<String> {
-        if let Some(ref nvidia) = self.nvidia {
+        let start = std::time::Instant::now();
+        let estimated_tokens = data.len() as i64 / 4;
+        let service_name = "analyze_market".to_string();
+        let model = self.local.model.clone();
+        let tier = infer_tier_from_model(&model);
+
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceStarted {
+            service_name: service_name.clone(),
+            model: model.clone(),
+            estimated_tokens,
+        });
+
+        let result = if let Some(ref nvidia) = self.nvidia {
             match nvidia.analyze_market(data).await {
-                Ok(res) => return Ok(res),
-                Err(e) => eprintln!("[llm] NVIDIA fallback to local: {}", e),
+                Ok(res) => Ok(res),
+                Err(e) => {
+                    eprintln!("[llm] NVIDIA fallback to local: {}", e);
+                    self.local.chat_simple(&format!("Analyze market data: {}", data)).await
+                }
             }
+        } else {
+            self.local.chat_simple(&format!("Analyze market data: {}", data)).await
+        };
+
+        let duration_ms = start.elapsed().as_millis() as i64;
+        let actual_tokens = result.as_ref().map(|r| r.len() as i64 / 4).unwrap_or(0);
+
+        {
+            let mut history = self.inference_history.lock().await;
+            history.push(InferenceRecord {
+                service_name: service_name.clone(),
+                model: model.clone(),
+                start_time: chrono::Utc::now() - chrono::Duration::milliseconds(duration_ms),
+                end_time: Some(chrono::Utc::now()),
+                estimated_tokens,
+                actual_tokens: result.as_ref().ok().map(|_| actual_tokens),
+                status: if result.is_ok() { "completed".to_string() } else { "failed".to_string() },
+                fallback_reason: None,
+                tier: tier.to_string(),
+                duration_ms,
+            });
+            if history.len() > 50 { history.remove(0); }
         }
-        self.local
-            .chat_simple(&format!("Analyze market data: {}", data))
-            .await
+
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
+            service_name: service_name.clone(),
+            model: model.clone(),
+            actual_tokens,
+            duration_ms,
+        });
+
+        result
     }
 
     /// Deliver a service using the service catalog's prompt template and model routing.
@@ -682,23 +773,82 @@ impl LlmClient {
     /// Deliver a service with a custom (hardened) system prompt and pre-sanitized user prompt.
     /// Used by the prompt injection defense layer to ensure user input is isolated
     /// and system instructions are reinforced against override attempts.
+    /// Records inference history and broadcasts WebSocket events for the live monitor.
     pub async fn deliver_service_with_prompt(
         &self,
+        service_name: &str,
         model_assignment: &crate::service_catalog::ModelAssignment,
         system_prompt: &str,
         user_prompt: &str,
     ) -> Result<String> {
         let model = model_assignment.model_name();
         let max_tokens = 2048; // Default max tokens for hardened delivery
+        let tier = infer_tier_from_model(&model);
+        let estimated_tokens = (system_prompt.len() + user_prompt.len()) as i64 / 4;
 
         eprintln!(
-            "[llm] Delivering with hardened prompt using model {}",
-            model
+            "[llm] Delivering service '{}' with hardened prompt using model {}",
+            service_name, model
         );
 
-        self.local
-            .chat_with_model(&model, system_prompt, user_prompt, max_tokens)
-            .await
+        // Broadcast inference started
+        crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceStarted {
+            service_name: service_name.to_string(),
+            model: model.clone(),
+            estimated_tokens,
+        });
+
+        let start = std::time::Instant::now();
+        let result = self.local.chat_with_model(&model, system_prompt, user_prompt, max_tokens).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        match &result {
+            Ok(output) => {
+                let actual_tokens = output.len() as i64 / 4;
+                // Record to history
+                let mut history = self.inference_history.lock().await;
+                history.push(InferenceRecord {
+                    service_name: service_name.to_string(),
+                    model: model.clone(),
+                    start_time: chrono::Utc::now() - chrono::Duration::milliseconds(duration_ms),
+                    end_time: Some(chrono::Utc::now()),
+                    estimated_tokens,
+                    actual_tokens: Some(actual_tokens),
+                    status: "completed".to_string(),
+                    fallback_reason: None,
+                    tier: tier.to_string(),
+                    duration_ms,
+                });
+                if history.len() > 50 { history.remove(0); }
+                drop(history);
+                // Broadcast completed
+                crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
+                    service_name: service_name.to_string(),
+                    model: model.clone(),
+                    actual_tokens,
+                    duration_ms,
+                });
+            }
+            Err(e) => {
+                // Record failure
+                let mut history = self.inference_history.lock().await;
+                history.push(InferenceRecord {
+                    service_name: service_name.to_string(),
+                    model: model.clone(),
+                    start_time: chrono::Utc::now() - chrono::Duration::milliseconds(duration_ms),
+                    end_time: Some(chrono::Utc::now()),
+                    estimated_tokens,
+                    actual_tokens: None,
+                    status: "failed".to_string(),
+                    fallback_reason: Some(e.to_string()),
+                    tier: tier.to_string(),
+                    duration_ms,
+                });
+                if history.len() > 50 { history.remove(0); }
+            }
+        }
+
+        result
     }
 }
 

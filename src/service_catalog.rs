@@ -1,9 +1,9 @@
 //! Service Catalog — 40 distinct AI services with model routing and delivery logic
 //!
-//! Tier 1: Micro-Tasks ($0.09-$0.49) — Qwen 9B 128k
-//! Tier 2: Real Work ($0.50-$2.99) — Gemma 12B 128k / Qwen 35B 128k
-//! Tier 3: Heavy Lifting ($3.00-$9.99) — Gemma 26B 256k/512k / Phi-4 Reasoning+ 256k
-//! Tier 4: Local-Only Superpowers ($9.99-$49.99) — Massive context, uncensored, bulk, custom models
+//! Tier 1: Micro-Tasks ($0.09-$0.49) — Qwen 9B 131k
+//! Tier 2: Real Work ($0.50-$2.99) — Gemma 12B 131k-262k / Qwen 35B 131k-262k
+//! Tier 3: Heavy Lifting ($3.00-$9.99) — Qwen 35B 262k-524k / Qwen 35BKimi 262k-524k
+//! Tier 4: Local-Only Superpowers ($9.99-$49.99) — Massive context, uncensored, bulk, custom
 
 use serde::{Deserialize, Serialize};
 
@@ -54,67 +54,91 @@ impl ServiceTier {
     }
 }
 
-/// Model assignment for service delivery
+/// Model assignment for service delivery — explicit context variants
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelAssignment {
-    Qwen9B,        // Fast, cheap — micro tasks
-    Gemma12B,      // Balanced — medium tasks
-    Qwen35B,       // Complex reasoning
-    Phi4Reasoning, // Deep reasoning, math
-    Gemma26B,      // Maximum capability, 256k context
-    Gemma26B512K,  // Maximum capability, 512k context
+    Qwen9B_131k,      // Fast, cheap — micro tasks
+    Qwen9B_262k,      // Fast, longer context
+    Qwen9B_524k,      // Fast, max context
+    Gemma12B_131k,    // Balanced — medium tasks
+    Gemma12B_262k,    // Balanced — longer context
+    Gemma12B_524k,    // Balanced — max context
+    Qwen35B_131k,     // Complex reasoning, standard context
+    Qwen35B_262k,     // Complex reasoning, longer context
+    Qwen35B_524k,     // Complex reasoning, max context
+    Qwen35BKimi_131k, // Deep reasoning, standard context
+    Qwen35BKimi_262k, // Deep reasoning, longer context
+    Qwen35BKimi_524k, // Deep reasoning, max context
 }
 
 impl ModelAssignment {
     pub fn model_name(&self) -> String {
         // Allow users to override model names via env vars for their own llama-swap setup
         let env_key = match self {
-            ModelAssignment::Qwen9B => "CLAWTRADE_MODEL_QWEN9B",
-            ModelAssignment::Gemma12B => "CLAWTRADE_MODEL_GEMMA12B",
-            ModelAssignment::Qwen35B => "CLAWTRADE_MODEL_QWEN35B",
-            ModelAssignment::Phi4Reasoning => "CLAWTRADE_MODEL_PHI4",
-            ModelAssignment::Gemma26B => "CLAWTRADE_MODEL_GEMMA26B",
-            ModelAssignment::Gemma26B512K => "CLAWTRADE_MODEL_GEMMA26B_512K",
+            ModelAssignment::Qwen9B_131k => "CLAWTRADE_MODEL_QWEN9B_131K",
+            ModelAssignment::Qwen9B_262k => "CLAWTRADE_MODEL_QWEN9B_262K",
+            ModelAssignment::Qwen9B_524k => "CLAWTRADE_MODEL_QWEN9B_524K",
+            ModelAssignment::Gemma12B_131k => "CLAWTRADE_MODEL_GEMMA12B_131K",
+            ModelAssignment::Gemma12B_262k => "CLAWTRADE_MODEL_GEMMA12B_262K",
+            ModelAssignment::Gemma12B_524k => "CLAWTRADE_MODEL_GEMMA12B_524K",
+            ModelAssignment::Qwen35B_131k => "CLAWTRADE_MODEL_QWEN35B_131K",
+            ModelAssignment::Qwen35B_262k => "CLAWTRADE_MODEL_QWEN35B_262K",
+            ModelAssignment::Qwen35B_524k => "CLAWTRADE_MODEL_QWEN35B_524K",
+            ModelAssignment::Qwen35BKimi_131k => "CLAWTRADE_MODEL_QWEN35BKIMI_131K",
+            ModelAssignment::Qwen35BKimi_262k => "CLAWTRADE_MODEL_QWEN35BKIMI_262K",
+            ModelAssignment::Qwen35BKimi_524k => "CLAWTRADE_MODEL_QWEN35BKIMI_524K",
         };
         std::env::var(env_key).unwrap_or_else(|_| self.default_model_name().to_string())
     }
 
     fn default_model_name(&self) -> String {
         match self {
-            ModelAssignment::Qwen9B => std::env::var("CLAWTRADE_MODEL_QWEN9B")
-                .unwrap_or_else(|_| "qwen3.5-9b-131k".to_string()),
-            ModelAssignment::Gemma12B => std::env::var("CLAWTRADE_MODEL_GEMMA12B")
-                .unwrap_or_else(|_| "gemma-4-12b-131k".to_string()),
-            ModelAssignment::Qwen35B => std::env::var("CLAWTRADE_MODEL_QWEN35B")
-                .unwrap_or_else(|_| "qwen3.6-35b-131k".to_string()),
-            ModelAssignment::Phi4Reasoning => std::env::var("CLAWTRADE_MODEL_PHI4")
-                .unwrap_or_else(|_| "phi-4-reasoning-plus-262k".to_string()),
-            ModelAssignment::Gemma26B => std::env::var("CLAWTRADE_MODEL_GEMMA26B")
-                .unwrap_or_else(|_| "gemma-4-26b-262k".to_string()),
-            ModelAssignment::Gemma26B512K => std::env::var("CLAWTRADE_MODEL_GEMMA26B_512K")
-                .unwrap_or_else(|_| "gemma-4-26b-524k".to_string()),
+            ModelAssignment::Qwen9B_131k => "synthclaw-9b-131k".to_string(),
+            ModelAssignment::Qwen9B_262k => "synthclaw-9b-262k".to_string(),
+            ModelAssignment::Qwen9B_524k => "synthclaw-9b-524k".to_string(),
+            ModelAssignment::Gemma12B_131k => "synthclaw-gemma-12b-131k".to_string(),
+            ModelAssignment::Gemma12B_262k => "synthclaw-gemma-12b-262k".to_string(),
+            ModelAssignment::Gemma12B_524k => "synthclaw-gemma-12b-524k".to_string(),
+            ModelAssignment::Qwen35B_131k => "synthclaw-35b-131k".to_string(),
+            ModelAssignment::Qwen35B_262k => "synthclaw-35b-262k".to_string(),
+            ModelAssignment::Qwen35B_524k => "synthclaw-35b-524k".to_string(),
+            ModelAssignment::Qwen35BKimi_131k => "synthclaw-35bkimi-131k".to_string(),
+            ModelAssignment::Qwen35BKimi_262k => "synthclaw-35bkimi-262k".to_string(),
+            ModelAssignment::Qwen35BKimi_524k => "synthclaw-35bkimi-524k".to_string(),
         }
     }
 
     pub fn context_size(&self) -> &'static str {
         match self {
-            ModelAssignment::Qwen9B => "128k",
-            ModelAssignment::Gemma12B => "128k",
-            ModelAssignment::Qwen35B => "128k",
-            ModelAssignment::Phi4Reasoning => "256k",
-            ModelAssignment::Gemma26B => "256k",
-            ModelAssignment::Gemma26B512K => "512k",
+            ModelAssignment::Qwen9B_131k => "131k",
+            ModelAssignment::Qwen9B_262k => "262k",
+            ModelAssignment::Qwen9B_524k => "524k",
+            ModelAssignment::Gemma12B_131k => "131k",
+            ModelAssignment::Gemma12B_262k => "262k",
+            ModelAssignment::Gemma12B_524k => "524k",
+            ModelAssignment::Qwen35B_131k => "131k",
+            ModelAssignment::Qwen35B_262k => "262k",
+            ModelAssignment::Qwen35B_524k => "524k",
+            ModelAssignment::Qwen35BKimi_131k => "131k",
+            ModelAssignment::Qwen35BKimi_262k => "262k",
+            ModelAssignment::Qwen35BKimi_524k => "524k",
         }
     }
 
     pub fn price_multiplier(&self) -> f64 {
         match self {
-            ModelAssignment::Qwen9B => 1.0,
-            ModelAssignment::Gemma12B => 2.0,
-            ModelAssignment::Qwen35B => 2.5,
-            ModelAssignment::Phi4Reasoning => 3.0,
-            ModelAssignment::Gemma26B => 4.0,
-            ModelAssignment::Gemma26B512K => 5.0,
+            ModelAssignment::Qwen9B_131k => 1.0,
+            ModelAssignment::Qwen9B_262k => 1.2,
+            ModelAssignment::Qwen9B_524k => 1.5,
+            ModelAssignment::Gemma12B_131k => 2.0,
+            ModelAssignment::Gemma12B_262k => 2.3,
+            ModelAssignment::Gemma12B_524k => 2.8,
+            ModelAssignment::Qwen35B_131k => 2.5,
+            ModelAssignment::Qwen35B_262k => 2.8,
+            ModelAssignment::Qwen35B_524k => 3.2,
+            ModelAssignment::Qwen35BKimi_131k => 3.0,
+            ModelAssignment::Qwen35BKimi_262k => 3.3,
+            ModelAssignment::Qwen35BKimi_524k => 3.8,
         }
     }
 }
@@ -148,7 +172,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Code Lint Fix",
         description: "Auto-fix lint warnings and format code",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 19,
         system_prompt: "You are a code formatting expert. Fix lint warnings, format code, and return clean, valid code only. No explanations.",
         user_prompt_template: "Fix and format this code:\n\n{input}",
@@ -164,7 +188,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Git Commit Msg",
         description: "Generate conventional commit messages from diffs",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 9,
         system_prompt: "Generate concise conventional commit messages. Format: type(scope): description. One line only.",
         user_prompt_template: "Generate a commit message for this diff:\n\n{input}",
@@ -180,7 +204,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Regex Generator",
         description: "Generate regex patterns from natural language descriptions",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 29,
         system_prompt: "You are a regex expert. Generate valid regex patterns. Return only the pattern, no explanation.",
         user_prompt_template: "Generate a regex for: {input}",
@@ -196,7 +220,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Shell One-Liner",
         description: "Generate shell commands for common tasks",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 19,
         system_prompt: "Generate efficient shell one-liners. Return only the command, no explanation.",
         user_prompt_template: "Shell command to: {input}",
@@ -212,7 +236,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "CSV Converter",
         description: "Convert between CSV, JSON, YAML formats",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 9,
         system_prompt: "Convert data formats accurately. Preserve all data. Return only the converted output.",
         user_prompt_template: "Convert this to {format}:\n\n{input}",
@@ -228,7 +252,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Variable Namer",
         description: "Generate clear variable and function names",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 9,
         system_prompt: "Generate clear, idiomatic variable and function names. One suggestion per line.",
         user_prompt_template: "Name this: {input}",
@@ -244,7 +268,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "JSON Schema Gen",
         description: "Generate JSON Schema from example data",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 19,
         system_prompt: "Generate accurate JSON Schema from example data. Include types, required fields, and constraints.",
         user_prompt_template: "Generate JSON Schema for:\n\n{input}",
@@ -260,7 +284,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Dockerfile Review",
         description: "Optimize Dockerfiles for size and security",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 29,
         system_prompt: "Review Dockerfiles for security and size optimization. List issues and suggestions.",
         user_prompt_template: "Review this Dockerfile:\n\n{input}",
@@ -276,7 +300,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "SQL Formatter",
         description: "Pretty-print and optimize SQL queries",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 9,
         system_prompt: "Format SQL queries with proper indentation and capitalization. Suggest optimizations if applicable.",
         user_prompt_template: "Format this SQL:\n\n{input}",
@@ -292,7 +316,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Markdown Table",
         description: "Convert data to markdown tables",
         tier: ServiceTier::MicroTask,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 9,
         system_prompt: "Convert data to well-formatted markdown tables. Align columns properly.",
         user_prompt_template: "Convert to markdown table:\n\n{input}",
@@ -309,9 +333,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "codebase_qa",
         name: "Codebase Q&A",
-        description: "Ask questions about large codebases (up to 128k tokens)",
+        description: "Ask questions about large codebases (up to 131k tokens)",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Gemma12B,
+        model: ModelAssignment::Gemma12B_131k,
         base_price_cents: 199,
         system_prompt: "You are a senior software engineer analyzing a codebase. Answer questions accurately based on the provided code. If uncertain, say so.",
         user_prompt_template: "Codebase:\n\n{codebase}\n\nQuestion: {question}",
@@ -327,7 +351,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Doc to API Spec",
         description: "Convert README/examples to OpenAPI specification",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Qwen35B,
+        model: ModelAssignment::Qwen35B_131k,
         base_price_cents: 149,
         system_prompt: "Convert API documentation to valid OpenAPI 3.0 specification. Include all endpoints, parameters, and response schemas.",
         user_prompt_template: "Convert to OpenAPI spec:\n\n{input}",
@@ -343,7 +367,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Log Analyzer",
         description: "Analyze large log files and find root causes",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Gemma12B,
+        model: ModelAssignment::Gemma12B_131k,
         base_price_cents: 99,
         system_prompt: "Analyze log files and identify errors, patterns, and root causes. Be specific about line numbers and timestamps.",
         user_prompt_template: "Analyze these logs:\n\n{input}",
@@ -357,9 +381,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "privacy_doc_review",
         name: "Privacy Doc Review",
-        description: "Analyze sensitive documents locally — data never leaves your machine",
+        description: "Analyze sensitive documents locally — data never leaves your machine (up to 262k tokens)",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Gemma12B_262k,
         base_price_cents: 249,
         system_prompt: "Analyze documents for privacy compliance, sensitive data exposure, and regulatory issues. Be thorough and specific.",
         user_prompt_template: "Review this document for privacy issues:\n\n{input}",
@@ -375,7 +399,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Uncensored Analysis",
         description: "Neutral analysis of controversial or restricted topics",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Qwen35B,
+        model: ModelAssignment::Qwen35B_131k,
         base_price_cents: 199,
         system_prompt: "Provide neutral, factual analysis without bias or moral judgments. Focus on evidence and logical reasoning.",
         user_prompt_template: "Analyze neutrally:\n\n{input}",
@@ -391,7 +415,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Code Review",
         description: "Deep code review with architecture suggestions",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Qwen35B,
+        model: ModelAssignment::Qwen35B_131k,
         base_price_cents: 149,
         system_prompt: "Perform thorough code review. Check for bugs, security issues, performance, and architecture. Suggest improvements.",
         user_prompt_template: "Review this code:\n\n{input}",
@@ -407,7 +431,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Test Generator",
         description: "Generate unit tests from function signatures",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 99,
         system_prompt: "Generate comprehensive unit tests. Cover edge cases, error conditions, and happy paths. Use standard testing frameworks.",
         user_prompt_template: "Generate tests for:\n\n{input}",
@@ -423,7 +447,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "API Client Gen",
         description: "Generate Python/JS clients from curl examples",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Qwen35B,
+        model: ModelAssignment::Qwen35B_131k,
         base_price_cents: 149,
         system_prompt: "Generate clean API client code from examples. Include error handling, type hints, and documentation.",
         user_prompt_template: "Generate Python client for:\n\n{input}",
@@ -439,7 +463,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Config Validator",
         description: "Validate nginx/k8s/docker configs for issues",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 69,
         system_prompt: "Validate configuration files for syntax errors, security issues, and best practices. List all problems found.",
         user_prompt_template: "Validate this config:\n\n{input}",
@@ -455,7 +479,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Diff Explainer",
         description: "Explain what a PR actually changes in plain English",
         tier: ServiceTier::RealWork,
-        model: ModelAssignment::Qwen9B,
+        model: ModelAssignment::Qwen9B_131k,
         base_price_cents: 79,
         system_prompt: "Explain code changes in plain English. Focus on what changed and why it matters. Non-technical stakeholders should understand.",
         user_prompt_template: "Explain this diff:\n\n{input}",
@@ -472,9 +496,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "repo_refactor",
         name: "Repo Refactor",
-        description: "Refactor large codebases (up to 256k tokens)",
+        description: "Refactor large codebases (up to 262k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Qwen35B_262k,
         base_price_cents: 499,
         system_prompt: "Refactor codebases while preserving functionality. Suggest architectural improvements, extract modules, and modernize patterns.",
         user_prompt_template: "Refactor this codebase to use {pattern}:\n\n{input}",
@@ -488,9 +512,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "book_summary_qa",
         name: "Book Summary + Q&A",
-        description: "Upload entire books/PDFs and ask detailed questions (up to 512k tokens)",
+        description: "Upload entire books/PDFs and ask detailed questions (up to 524k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Gemma26B512K,
+        model: ModelAssignment::Qwen35BKimi_524k,
         base_price_cents: 399,
         system_prompt: "Analyze long documents thoroughly. Answer specific questions with citations to relevant sections. Be precise about page numbers and quotes.",
         user_prompt_template: "Document:\n\n{document}\n\nQuestion: {question}",
@@ -504,9 +528,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "contract_review",
         name: "Contract Review",
-        description: "Find liability clauses and risks in legal agreements",
+        description: "Find liability clauses and risks in legal agreements (up to 262k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Qwen35BKimi_262k,
         base_price_cents: 799,
         system_prompt: "Review legal documents for risks, liability, and unfavorable terms. Flag specific clauses and suggest redlines. Note: This is not legal advice.",
         user_prompt_template: "Review this contract for risks:\n\n{input}",
@@ -520,9 +544,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "threat_intel",
         name: "Threat Intel Report",
-        description: "Analyze malware and extract IOCs for security teams",
+        description: "Analyze malware and extract IOCs for security teams (up to 262k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Phi4Reasoning,
+        model: ModelAssignment::Qwen35BKimi_262k,
         base_price_cents: 599,
         system_prompt: "Analyze security data and extract IOCs (IPs, hashes, domains, patterns). Provide structured threat intelligence report.",
         user_prompt_template: "Analyze this security data:\n\n{input}",
@@ -538,7 +562,7 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
         name: "Architecture Review",
         description: "Review system design and suggest improvements",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Qwen35B,
+        model: ModelAssignment::Qwen35B_131k,
         base_price_cents: 699,
         system_prompt: "Review system architecture for scalability, reliability, security, and cost. Suggest concrete improvements with trade-offs.",
         user_prompt_template: "Review this architecture:\n\n{input}",
@@ -552,9 +576,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "research_synthesis",
         name: "Research Synthesis",
-        description: "Synthesize multiple papers into literature reviews",
+        description: "Synthesize multiple papers into literature reviews (up to 524k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Gemma26B512K,
+        model: ModelAssignment::Qwen35BKimi_524k,
         base_price_cents: 499,
         system_prompt: "Synthesize research papers into coherent literature reviews. Identify gaps, contradictions, and consensus. Cite specific papers.",
         user_prompt_template: "Synthesize these papers:\n\n{input}",
@@ -568,9 +592,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "legacy_modernize",
         name: "Legacy Modernize",
-        description: "Convert legacy code to modern languages and patterns",
+        description: "Convert legacy code to modern languages and patterns (up to 262k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Qwen35B_262k,
         base_price_cents: 599,
         system_prompt: "Convert legacy code to modern equivalents. Preserve business logic, add type safety, and follow current best practices.",
         user_prompt_template: "Convert this to {target_language}:\n\n{input}",
@@ -584,9 +608,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "compliance_audit",
         name: "Compliance Audit",
-        description: "Check codebases for SOC2/GDPR/HIPAA compliance gaps",
+        description: "Check codebases for SOC2/GDPR/HIPAA compliance gaps (up to 262k tokens)",
         tier: ServiceTier::HeavyLifting,
-        model: ModelAssignment::Phi4Reasoning,
+        model: ModelAssignment::Qwen35BKimi_262k,
         base_price_cents: 799,
         system_prompt: "Audit codebases for compliance gaps. Check for PII handling, encryption, access controls, and audit trails. Be specific about violations.",
         user_prompt_template: "Audit for {standard} compliance:\n\n{input}",
@@ -604,9 +628,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "full_repo_analysis",
         name: "Full Repo Analysis",
-        description: "Analyze entire Git repositories up to 512k tokens in one shot",
+        description: "Analyze entire Git repositories up to 524k tokens in one shot",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B512K,
+        model: ModelAssignment::Qwen35BKimi_524k,
         base_price_cents: 1499,
         system_prompt: "Analyze entire codebases comprehensively. Find bugs, security issues, performance bottlenecks, and architectural problems. Be specific about file paths and line numbers.",
         user_prompt_template: "Analyze this entire codebase:\n\n{input}\n\nFocus: {focus}",
@@ -620,9 +644,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "bulk_document_processing",
         name: "Bulk Document Processing",
-        description: "Process 1000+ documents with no rate limits. Extract tables, entities, relationships",
+        description: "Process 1000+ documents with no rate limits. Extract tables, entities, relationships (up to 524k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B512K,
+        model: ModelAssignment::Qwen35BKimi_524k,
         base_price_cents: 1999,
         system_prompt: "Process large volumes of documents efficiently. Extract structured data, identify entities, and find relationships across documents. Handle duplicates and inconsistencies.",
         user_prompt_template: "Process these documents and extract {extraction_target}:\n\n{input}",
@@ -636,9 +660,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "uncensored_threat_analysis",
         name: "Uncensored Threat Analysis",
-        description: "Analyze malware, C2 traffic, and threat actor TTPs without cloud filters",
+        description: "Analyze malware, C2 traffic, and threat actor TTPs without cloud filters (up to 262k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Phi4Reasoning,
+        model: ModelAssignment::Qwen35BKimi_262k,
         base_price_cents: 2499,
         system_prompt: "Analyze security threats and malware without censorship. Extract IOCs, identify attack patterns, and attribute threat actors. Be specific and technical.",
         user_prompt_template: "Analyze this threat data:\n\n{input}",
@@ -652,9 +676,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "custom_model_inference",
         name: "Custom Model Inference",
-        description: "Run your fine-tuned models on private data. Domain-specific analysis",
+        description: "Run your fine-tuned models on private data. Domain-specific analysis (up to 524k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B512K,
+        model: ModelAssignment::Qwen35BKimi_524k,
         base_price_cents: 2999,
         system_prompt: "Execute domain-specific analysis using custom model weights. Apply specialized knowledge to private data sets. Maintain confidentiality.",
         user_prompt_template: "Run analysis on private data using custom model {model_name}:\n\n{input}",
@@ -668,9 +692,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "realtime_log_analysis",
         name: "Real-Time Log Analysis",
-        description: "Stream logs into 128k context windows for anomaly detection in real-time",
+        description: "Stream logs into 131k context windows for anomaly detection in real-time",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Qwen35B,
+        model: ModelAssignment::Qwen35B_131k,
         base_price_cents: 1799,
         system_prompt: "Analyze streaming log data in real-time. Detect anomalies, correlate events across services, and identify root causes. Prioritize by severity.",
         user_prompt_template: "Analyze these logs for anomalies:\n\n{input}",
@@ -684,9 +708,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "massive_context_qa",
         name: "Massive Context Q&A",
-        description: "Upload 500k tokens of context and ask complex multi-hop questions",
+        description: "Upload 524k tokens of context and ask complex multi-hop questions",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B512K,
+        model: ModelAssignment::Qwen35BKimi_524k,
         base_price_cents: 1299,
         system_prompt: "Answer complex questions requiring reasoning across massive context. Connect information from distant parts of the document. Cite specific sections.",
         user_prompt_template: "Context:\n\n{context}\n\nQuestion: {question}",
@@ -700,9 +724,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "codebase_migration_plan",
         name: "Codebase Migration Plan",
-        description: "Plan migration of 500k+ line monoliths to microservices with full dependency mapping",
+        description: "Plan migration of 500k+ line monoliths to microservices with full dependency mapping (up to 524k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B512K,
+        model: ModelAssignment::Qwen35B_524k,
         base_price_cents: 3499,
         system_prompt: "Create detailed migration plans for large codebases. Map dependencies, identify service boundaries, estimate effort, and flag risks. Be specific about files and modules.",
         user_prompt_template: "Plan migration of this codebase to {target_architecture}:\n\n{input}",
@@ -716,9 +740,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "private_medical_analysis",
         name: "Private Medical Analysis",
-        description: "Analyze medical records with HIPAA guarantee — data never leaves your machine",
+        description: "Analyze medical records with HIPAA guarantee — data never leaves your machine (up to 262k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Phi4Reasoning,
+        model: ModelAssignment::Qwen35BKimi_262k,
         base_price_cents: 3999,
         system_prompt: "Analyze medical data with strict privacy. Identify risk factors, drug interactions, and anomalies. Never include patient identifiers in output. Flag critical findings.",
         user_prompt_template: "Analyze these medical records for {analysis_type}:\n\n{input}",
@@ -732,9 +756,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "financial_forensic_analysis",
         name: "Financial Forensic Analysis",
-        description: "Analyze financial documents for fraud, money laundering, and compliance issues locally",
+        description: "Analyze financial documents for fraud, money laundering, and compliance issues locally (up to 262k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Phi4Reasoning,
+        model: ModelAssignment::Qwen35BKimi_262k,
         base_price_cents: 4499,
         system_prompt: "Analyze financial data for irregularities, fraud patterns, and compliance violations. Identify suspicious transactions, unusual patterns, and regulatory risks. Be thorough and specific.",
         user_prompt_template: "Analyze these financial records for {analysis_type}:\n\n{input}",
@@ -748,9 +772,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "adversarial_red_team",
         name: "Adversarial Red Team",
-        description: "Uncensored security testing and vulnerability analysis that cloud APIs refuse",
+        description: "Uncensored security testing and vulnerability analysis that cloud APIs refuse (up to 131k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Qwen35B,
+        model: ModelAssignment::Qwen35B_131k,
         base_price_cents: 2999,
         system_prompt: "Perform thorough security analysis and red team assessments. Identify vulnerabilities, attack vectors, and exploitation paths. Be specific and technical. This is authorized security testing.",
         user_prompt_template: "Perform red team analysis on:\n\n{input}",
@@ -764,15 +788,15 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
     ServiceDefinition {
         service_type: "multi_model_ensemble",
         name: "Multi-Model Ensemble",
-        description: "Run multiple local models on same input and synthesize consensus answer",
+        description: "Run multiple local models on same input and synthesize consensus answer (up to 524k tokens)",
         tier: ServiceTier::LocalOnly,
-        model: ModelAssignment::Gemma26B,
+        model: ModelAssignment::Qwen35BKimi_524k,
         base_price_cents: 1999,
         system_prompt: "Synthesize answers from multiple model outputs. Identify consensus, disagreements, and confidence levels. Provide the most reliable answer with reasoning.",
         user_prompt_template: "Synthesize these model outputs into a consensus answer:\n\n{input}",
         input_format: "model_outputs",
         output_format: "consensus_answer",
-        example_input: "[Qwen 9B output + Gemma 26B output + Phi-4 output on same question]",
+        example_input: "[Qwen 9B output + Gemma 12B output + Qwen 35B output on same question]",
         example_output: "Consensus: All models agree on primary conclusion.\nDisagreement: Model confidence varies on secondary point (60% vs 85%).\nRecommended Answer: [synthesized with confidence intervals]",
         max_output_tokens: 4096,
         max_context_length: 524288,
@@ -887,11 +911,10 @@ mod tests {
 
     #[test]
     fn test_model_assignment_multiplier() {
-        assert_eq!(ModelAssignment::Qwen9B.price_multiplier(), 1.0);
-        assert_eq!(ModelAssignment::Gemma12B.price_multiplier(), 2.0);
-        assert_eq!(ModelAssignment::Qwen35B.price_multiplier(), 2.5);
-        assert_eq!(ModelAssignment::Phi4Reasoning.price_multiplier(), 3.0);
-        assert_eq!(ModelAssignment::Gemma26B.price_multiplier(), 4.0);
+        assert_eq!(ModelAssignment::Qwen9B_131k.price_multiplier(), 1.0);
+        assert_eq!(ModelAssignment::Gemma12B_131k.price_multiplier(), 2.0);
+        assert_eq!(ModelAssignment::Qwen35B_131k.price_multiplier(), 2.5);
+        assert_eq!(ModelAssignment::Qwen35BKimi_131k.price_multiplier(), 3.0);
     }
 
     #[test]
@@ -954,11 +977,17 @@ mod tests {
 
     #[test]
     fn test_default_model_names() {
-        let qwen = ModelAssignment::Qwen9B;
-        assert_eq!(qwen.default_model_name(), "qwen3.5-9b-131k");
+        let qwen = ModelAssignment::Qwen9B_131k;
+        assert_eq!(qwen.default_model_name(), "synthclaw-9b-131k");
 
-        let gemma = ModelAssignment::Gemma12B;
-        assert_eq!(gemma.default_model_name(), "gemma-4-12b-131k");
+        let gemma = ModelAssignment::Gemma12B_131k;
+        assert_eq!(gemma.default_model_name(), "synthclaw-gemma-12b-131k");
+
+        let qwen35 = ModelAssignment::Qwen35B_262k;
+        assert_eq!(qwen35.default_model_name(), "synthclaw-35b-262k");
+
+        let kimi = ModelAssignment::Qwen35BKimi_524k;
+        assert_eq!(kimi.default_model_name(), "synthclaw-35bkimi-524k");
     }
 
     #[test]

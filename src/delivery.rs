@@ -94,6 +94,17 @@ pub async fn execute_service_direct(
     service_id: &str,
     user_input: &str,
 ) -> Result<String> {
+    execute_service_direct_with_model(pool, llm, service_id, user_input, None).await
+}
+
+/// Execute a service with an optional model override. Used for demos to force fast models.
+pub async fn execute_service_direct_with_model(
+    pool: &SqlitePool,
+    llm: &crate::nvidia::LlmClient,
+    service_id: &str,
+    user_input: &str,
+    model_override: Option<&crate::service_catalog::ModelAssignment>,
+) -> Result<String> {
     let service = match Service::get_by_id(pool, service_id).await? {
         Some(s) => s,
         None => {
@@ -129,13 +140,16 @@ pub async fn execute_service_direct(
     // Harden the system prompt against injection
     let hardened_system = crate::prompt_defense::harden_system_prompt(def.system_prompt);
 
+    // Use model override for demos, or catalog default for real purchases
+    let model = model_override.unwrap_or(&def.model);
+
     // Deliver using the shared LLM client + catalog's prompt template + model routing
     let start = std::time::Instant::now();
 
-    match llm.deliver_service_with_prompt(&def.model, &hardened_system, &def.user_prompt_template.replace("{input}", &sanitized_input)).await {
+    match llm.deliver_service_with_prompt(&service.name, model, &hardened_system, &def.user_prompt_template.replace("{input}", &sanitized_input)).await {
         Ok(result) => {
             let execution_time_ms = start.elapsed().as_millis() as u64;
-            let model_name = def.model.model_name();
+            let model_name = model.model_name();
             let tier_label = match def.tier {
                 crate::service_catalog::ServiceTier::MicroTask => "Micro-Task",
                 crate::service_catalog::ServiceTier::RealWork => "Real Work",

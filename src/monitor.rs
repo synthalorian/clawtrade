@@ -62,14 +62,23 @@ pub async fn demonstrate_service(pool: &SqlitePool, service_id: &str) -> Result<
         Some(s) => s,
         None => anyhow::bail!("service not found: {}", service_id),
     };
-    
+
     let sample_input = get_sample_input(&service.service_type);
     let start = std::time::Instant::now();
-    
+
     let llm = crate::nvidia::LlmClient::new();
-    let output = execute_service_direct(pool, &llm, service_id, &sample_input).await?;
+
+    // For demos, force the fastest model (Qwen 9B) so judges don't wait for model loads.
+    // Real purchases still use the catalog's tiered model routing.
+    let output = execute_service_direct_with_model(
+        pool,
+        &llm,
+        service_id,
+        &sample_input,
+        Some(&crate::service_catalog::ModelAssignment::Qwen9B_131k),
+    ).await?;
     let latency_ms = start.elapsed().as_millis() as u64;
-    
+
     Ok(ServiceDemo {
         service_id: service_id.to_string(),
         service_name: service.name,
