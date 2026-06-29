@@ -1,7 +1,7 @@
 [package]
 name = "clawtrade"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 description = "AI-powered micro-SaaS marketplace where Hermes agents autonomously create, sell, and buy services"
 license = "Apache-2.0"
 repository = "https://github.com/synthalorian/clawtrade"

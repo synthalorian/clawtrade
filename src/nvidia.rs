@@ -228,6 +228,7 @@ impl LocalLlmClient {
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
             .json(&req)
+            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await?;
 
@@ -241,10 +242,19 @@ impl LocalLlmClient {
         let data: serde_json::Value = serde_json::from_str(&text)
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, text))?;
         
-        Ok(data["choices"][0]["message"]["content"]
+        let mut result = data["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("")
-            .to_string())
+            .to_string();
+        
+        // Filter out tool call patterns and special token formats
+        let tool_patterns = ["test_connection_check", "greet_user", "function_call", "tool_call", "<|channel>thought", "<|channel|>"];
+        for pattern in &tool_patterns {
+            result = result.replace(pattern, "");
+        }
+        result = result.trim().to_string();
+        
+        Ok(result)
     }
 
     pub async fn chat_simple(&self, prompt: &str) -> Result<String> {
@@ -287,6 +297,7 @@ impl LocalLlmClient {
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
             .json(&req)
+            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await?;
 
@@ -316,6 +327,7 @@ impl LocalLlmClient {
                     .client
                     .post(format!("{}/v1/chat/completions", self.base_url))
                     .json(&retry_req)
+                    .timeout(std::time::Duration::from_secs(120))
                     .send()
                     .await?;
                 let retry_status = retry_res.status();
@@ -324,10 +336,16 @@ impl LocalLlmClient {
                 if retry_status.is_success() {
                     let data: serde_json::Value = serde_json::from_str(&retry_text)
                         .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, retry_text))?;
-                    let result = data["choices"][0]["message"]["content"]
+                    let mut result = data["choices"][0]["message"]["content"]
                         .as_str()
                         .unwrap_or("")
                         .to_string();
+                    // Filter out tool call patterns and special token formats
+                    let tool_patterns = ["test_connection_check", "greet_user", "function_call", "tool_call", "<|channel>thought", "<|channel|>"];
+                    for pattern in &tool_patterns {
+                        result = result.replace(pattern, "");
+                    }
+                    result = result.trim().to_string();
                     let actual_tokens = result.len() as i64 / 4;
                     // Record inference
                     self.record_inference(InferenceRecord {
@@ -377,10 +395,20 @@ impl LocalLlmClient {
         let data: serde_json::Value = serde_json::from_str(&text)
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, text))?;
 
-        let result = data["choices"][0]["message"]["content"]
+        let mut result = data["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("")
             .to_string();
+        
+        // Filter out tool call patterns and special token formats that some models return
+        let tool_patterns = ["test_connection_check", "greet_user", "function_call", "tool_call", "<|channel>thought", "<channel|>"];
+        for pattern in &tool_patterns {
+            result = result.replace(pattern, "");
+        }
+        result = result.trim().to_string();
+        if result.is_empty() {
+            result = "The model returned an empty response. Please try again with a different input.".to_string();
+        }
         let actual_tokens = result.len() as i64 / 4;
 
         // Record inference
@@ -486,7 +514,7 @@ impl LlmClient {
             .map(NvidiaClient::new);
 
         let local_url = std::env::var("LLM_LOCAL_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string()); // Default to sandboxed proxy
+            .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string()); // Default to llama-swap
         let local_model = std::env::var("LLM_LOCAL_MODEL")
             .unwrap_or_else(|_| "synthclaw-9b-131k".to_string());
 

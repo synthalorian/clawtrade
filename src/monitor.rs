@@ -9,7 +9,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::models::service::Service;
-use crate::delivery::execute_service_direct;
+use crate::delivery::{execute_service_direct, execute_service_direct_with_model};
 
 /// A showcase entry demonstrating a service type
 #[derive(Debug, Serialize)]
