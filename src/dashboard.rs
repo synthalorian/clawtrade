@@ -163,9 +163,9 @@ header h1 a { text-decoration: none; color: inherit; }
 }
 .live-indicator .dot {
   width: 7px; height: 7px;
-  background: #ff3333;
+  background: #00ff88;
   border-radius: 50%;
-  box-shadow: 0 0 8px rgba(255,51,51,0.6);
+  box-shadow: 0 0 8px rgba(0,255,136,0.6);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 @keyframes pulse-dot {
@@ -948,31 +948,32 @@ function tryService(serviceId) {
   const modal = document.createElement("div");
   modal.id = "try-modal";
   modal.className = "modal-overlay";
-  modal.innerHTML = '<div class="modal-box"><h3 style="color:var(--accent);margin-bottom:1rem;">Try Service (1 Free)</h3><p style="color:var(--muted);margin-bottom:1rem;font-size:0.9rem;">Enter your text below and click Run to see the LLM-generated result. <strong style="color:var(--accent-3);">One free try per service.</strong></p><textarea id="try-input" style="width:100%;min-height:120px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1rem;color:var(--text);font-family:var(--mono);font-size:0.9rem;resize:vertical;" placeholder="Enter text to process..."></textarea><div style="margin-top:1rem;display:flex;gap:0.5rem;justify-content:flex-end;"><button onclick="document.getElementById(\'try-modal\').remove()" class="btn btn-secondary">Cancel</button><button id="try-run-btn" class="btn">Run Service</button></div><div id="try-loading" style="display:none;text-align:center;padding:2rem;color:var(--muted);"><div style="font-size:2rem;margin-bottom:1rem;">⚡</div><div>Processing with local LLM...</div><div style="font-size:0.8rem;margin-top:0.5rem;">This may take 3-5 seconds</div></div><pre id="try-result" style="display:none;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:0.85rem;line-height:1.6;color:var(--text);max-height:400px;margin-top:1rem;"></pre></div>';
+  modal.innerHTML = '<div class="modal-box"><h3 style="color:var(--accent);margin-bottom:1rem;">Try Service (1 Free)</h3><p style="color:var(--muted);margin-bottom:1rem;font-size:0.9rem;">Enter your text below and click Run to see the LLM-generated result. <strong style="color:var(--accent-3);">One free try per service.</strong></p><textarea id="try-input" style="width:100%;min-height:120px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1rem;color:var(--text);font-family:var(--mono);font-size:0.9rem;resize:vertical;" placeholder="Enter text to process..."></textarea><div style="margin-top:1rem;display:flex;gap:0.5rem;justify-content:flex-end;"><button onclick="document.getElementById(\'try-modal\').remove()" class="btn btn-secondary">Cancel</button><button id="try-run-btn" class="btn">Run Service</button></div><div id="try-loading" style="display:none;text-align:center;padding:2rem;color:var(--muted);"><div style="font-size:2rem;margin-bottom:1rem;">⚡</div><div>Processing with local LLM...</div><div style="font-size:0.8rem;margin-top:0.5rem;">This may take a moment</div></div><pre id="try-result" style="display:none;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:0.85rem;line-height:1.6;color:var(--text);max-height:400px;margin-top:1rem;"></pre></div>';
   document.body.appendChild(modal);
   modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
   document.getElementById("try-run-btn").addEventListener("click", () => runTryService(serviceId));
 }
 
 async function runTryService(serviceId) {
+  if (hasTried(serviceId)) { showLinkAccountModal(); return; }
   const input = document.getElementById("try-input").value;
   const btn = document.getElementById("try-run-btn");
   btn.disabled = true; btn.textContent = "Running...";
   document.getElementById("try-loading").style.display = "block";
   document.getElementById("try-result").style.display = "none";
   try {
-    const resp = await fetch("/api/services/" + serviceId + "/execute", {
+    const resp = await fetch("/api/services/" + serviceId + "/try", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({user_input: input || "Sample text for processing"})
+      body: JSON.stringify({input: input || "Sample text for processing"})
     });
     const data = await resp.json();
     document.getElementById("try-loading").style.display = "none";
     const el = document.getElementById("try-result");
     el.style.display = "block";
-    if (data.result) {
+    if (data.output) {
       // Format output based on service type
-      const serviceType = data.service_type || "unknown";
-      el.innerHTML = formatTryOutput(serviceType, data.result);
+      const serviceType = data.tier || "unknown";
+      el.innerHTML = formatTryOutput(serviceType, data.output);
       recordTry(serviceId);
     } else {
       el.textContent = "Error: " + (data.error || "Unknown error");
@@ -1163,7 +1164,20 @@ fn wrap_page(title: &str, content: &str, active_agents: usize) -> String {
 /* ─────────── PAGE HANDLERS ─────────── */
 
 pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
-    let services = match Service::list_active(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
+    let all_services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
+    // Deduplicate by service_type — keep the most recent one (same logic as services_page)
+    let catalog_types: std::collections::HashSet<String> = crate::service_catalog::SERVICE_CATALOG
+        .iter().map(|s| s.service_type.to_string()).collect();
+    let mut unique: std::collections::HashMap<String, crate::models::service::Service> = std::collections::HashMap::new();
+    for s in &all_services {
+        if !catalog_types.contains(&s.service_type) {
+            continue;
+        }
+        unique.entry(s.service_type.clone())
+            .and_modify(|existing| { if s.created_at > existing.created_at { *existing = s.clone(); } })
+            .or_insert(s.clone());
+    }
+    let services: Vec<crate::models::service::Service> = unique.into_values().collect();
     let agents = match Agent::list_top(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
     let transactions = match Transaction::list(&state.pool).await { Ok(t) => t, Err(_) => vec![] };
     let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
@@ -1257,6 +1271,15 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
         )
     }).collect::<String>();
 
+    // Build lookup maps for activity feed - query all agents without dedup for accurate ID lookup
+    let all_agents_raw = match sqlx::query_as::<_, Agent>("SELECT * FROM agents ORDER BY created_at DESC").fetch_all(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
+    let agent_names: std::collections::HashMap<String, String> = all_agents_raw.iter()
+        .map(|a| (a.id.clone(), a.name.clone()))
+        .collect();
+    let service_names: std::collections::HashMap<String, String> = all_services.iter()
+        .map(|s| (s.id.clone(), s.name.clone()))
+        .collect();
+
     let activity_html = if transactions.is_empty() {
         r#"<div class="activity-skeleton"><div class="sk-icon"></div><div class="sk-text"></div></div>
             <div class="activity-skeleton"><div class="sk-icon"></div><div class="sk-text short"></div></div>
@@ -1265,6 +1288,15 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
         transactions.iter().take(8).map(|t| {
             let icon = if t.status == "paid" { "🛒" } else { "⭐" };
             let time_ago = time_since(&t.created_at);
+            let buyer_name = agent_names.get(&t.buyer_id).cloned().unwrap_or_else(|| {
+                if t.buyer_id == "anonymous" { "Anonymous".to_string() } else { t.buyer_id[..8.min(t.buyer_id.len())].to_string() }
+            });
+            let service_name = service_names.get(&t.service_id).cloned().unwrap_or_else(|| {
+                t.service_id[..8.min(t.service_id.len())].to_string()
+            });
+            let seller_name = agent_names.get(&t.seller_id).cloned().unwrap_or_else(|| {
+                t.seller_id[..8.min(t.seller_id.len())].to_string()
+            });
             format!(
                 r#"<div class="activity-item">
                     <span class="activity-icon">{}</span>
@@ -1274,9 +1306,9 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
                     </div>
                 </div>"#,
                 icon,
-                html_escape(&t.buyer_id[..8.min(t.buyer_id.len())]),
-                html_escape(&t.service_id[..8.min(t.service_id.len())]),
-                html_escape(&t.seller_id[..8.min(t.seller_id.len())]),
+                html_escape(&buyer_name),
+                html_escape(&service_name),
+                html_escape(&seller_name),
                 time_ago,
                 t.amount_cents / 100,
                 format_cents(t.amount_cents % 100)
@@ -1288,7 +1320,7 @@ pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
         r#"<div class="stats">
     <div class="stat-card"><div class="value">{}</div><div class="label">Services</div></div>
     <div class="stat-card"><div class="value">{}</div><div class="label">Agents</div></div>
-    <div class="stat-card"><div class="value pulse-value">{}</div><div class="label">Active Agents</div></div>
+    <div class="stat-card"><div class="value pulse-value">{}</div><div class="label">Total Agents</div></div>
     <div class="stat-card"><div class="value">${}.{}</div><div class="label">Volume</div></div>
   </div>"#,
         services.len(), agents.len(), all_agents.len(),
@@ -1514,7 +1546,8 @@ pub async fn transactions_page(State(state): State<Arc<AppState>>) -> Html<Strin
     let transactions = match Transaction::list(&state.pool).await { Ok(t) => t, Err(_) => vec![] };
     let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
     let all_services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
-    let agent_names: std::collections::HashMap<String, String> = all_agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
+    let all_agents_raw = match sqlx::query_as::<_, Agent>("SELECT * FROM agents ORDER BY created_at DESC").fetch_all(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
+    let agent_names: std::collections::HashMap<String, String> = all_agents_raw.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
     let service_names: std::collections::HashMap<String, String> = all_services.iter().map(|s| (s.id.clone(), s.name.clone())).collect();
 
     let tx_html = transactions.iter().map(|t| {
@@ -1570,7 +1603,8 @@ pub async fn my_purchases_page(State(state): State<Arc<AppState>>) -> Html<Strin
     let transactions = match Transaction::list(&state.pool).await { Ok(t) => t, Err(_) => vec![] };
     let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
     let all_services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
-    let agent_names: std::collections::HashMap<String, String> = all_agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
+    let all_agents_raw = match sqlx::query_as::<_, Agent>("SELECT * FROM agents ORDER BY created_at DESC").fetch_all(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
+    let agent_names: std::collections::HashMap<String, String> = all_agents_raw.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
     let service_names: std::collections::HashMap<String, String> = all_services.iter().map(|s| (s.id.clone(), s.name.clone())).collect();
 
     let (completed, pending): (Vec<_>, Vec<_>) = transactions.iter().partition(|t| t.status == "released" || t.status == "escrow");
@@ -1723,7 +1757,7 @@ pub async fn cancel_page(Query(query): Query<TxQuery>) -> Html<String> {
 }
 
 pub async fn monitor_page(State(state): State<Arc<AppState>>) -> Html<String> {
-    let services = match Service::list_active(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
+    let services = match Service::list(&state.pool).await { Ok(s) => s, Err(_) => vec![] };
     let all_agents = match Agent::list(&state.pool).await { Ok(a) => a, Err(_) => vec![] };
     let agent_names: std::collections::HashMap<String, String> = all_agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect();
 
@@ -2091,7 +2125,17 @@ fetch('/api/inference/history')
   })
   .then(data => {
     if (data.history && data.history.length > 0) {
-      data.history.reverse().forEach(addHistoryRow);
+      data.history.forEach(record => {
+        addHistoryRow({
+          timestamp: Math.floor(new Date(record.start_time).getTime() / 1000),
+          service_name: record.service_name,
+          model: record.model,
+          tier: record.tier || inferTier(record.model),
+          input_tokens: record.actual_tokens || record.estimated_tokens,
+          duration_ms: record.duration_ms,
+          status: record.status
+        });
+      });
     }
   })
   .catch(e => {
@@ -2112,7 +2156,8 @@ ws.onmessage = (event) => {
   if (msg.event === 'InferenceCompleted') {
     const card = document.getElementById('inf-' + msg.service_name);
     if (card) {
-      card.querySelector('.metric-value')?.textContent = msg.duration_ms + 'ms';
+      const metric = card.querySelector('.metric-value');
+      if (metric) metric.textContent = msg.duration_ms + 'ms';
       card.style.opacity = '0.7';
       setTimeout(() => card.remove(), 3000);
     }
