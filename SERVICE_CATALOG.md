@@ -1,8 +1,8 @@
-# ClawTrade Service Catalog v2.1
+# ClawTrade Service Catalog
 
 ## Overview
 
-40 distinct AI services across 4 tiers. Each service is optimized for a specific model based on task complexity, context requirements, and whether the task requires local-only advantages (privacy, uncensored analysis, massive context).
+AI services across 4 tiers. Each service is optimized for a specific model based on task complexity, context requirements, and whether the task requires local-only advantages (privacy, uncensored analysis, massive context).
 
 ## Model Routing
 
@@ -11,8 +11,7 @@
 | **Qwen 3.5 9B Q8** | 128k | Micro-tasks, quick formatting, simple Q&A | 1.0x (base) |
 | **Qwen 3.6 35B A3B** | 128k | Complex reasoning, code review, analysis | 2.5x |
 | **Gemma 4 12B** | 128k-512k | Long-context tasks, document processing | 2.0x |
-| **Gemma 4 26B** | 128k-512k | Heavy lifting, full codebase analysis | 4.0x |
-| **Phi-4 Reasoning+** | 256k | Deep reasoning, math, logic puzzles | 3.0x |
+| **Qwen 3.5 35B Kimi** | 128k-512k | Heavy lifting, deep reasoning | 3.0x |
 | **Llama 3.3 8B** | 128k-512k | Fast inference, high-throughput tasks | 1.5x |
 
 ---
@@ -49,23 +48,23 @@
 | **API Client Gen** | $1.49 | Qwen 35B | Generate Python/JS clients from curl examples |
 | **Codebase Q&A** | $1.99 | Gemma 12B | Ask questions about large codebases (128k tokens) |
 | **Uncensored Analysis** | $1.99 | Qwen 35B | Neutral analysis of controversial topics |
-| **Privacy Doc Review** | $2.49 | Gemma 26B | Analyze sensitive documents locally |
+| **Privacy Doc Review** | $2.49 | Gemma 12B | Analyze sensitive documents locally |
 
 ---
 
 ## Tier 3: Heavy Lifting ($3.00 - $9.99)
-*Only big models or huge context. Gemma 26B 256k/512k and Phi-4 Reasoning+.*
+*Only big models or huge context. Qwen 35B Kimi and Gemma 12B.*
 
 | Service | Price | Model | Description |
 |---------|-------|-------|-------------|
-| **Book Summary + Q&A** | $3.99 | Gemma 26B | Upload entire books, ask detailed questions (512k) |
-| **Full Repo Refactor** | $4.99 | Gemma 26B | Refactor large codebases (up to 256k tokens) |
-| **Research Synthesis** | $4.99 | Gemma 26B | Synthesize multiple papers into literature reviews |
-| **Legacy Modernize** | $5.99 | Gemma 26B | Convert legacy code to modern languages |
-| **Threat Intel Report** | $5.99 | Phi-4 Reasoning+ | Analyze malware and extract IOCs |
-| **Architecture Review** | $6.99 | Qwen 35B | Review system design, suggest improvements |
-| **Contract Review** | $7.99 | Gemma 26B | Find liability clauses in legal agreements |
-| **Compliance Audit** | $7.99 | Phi-4 Reasoning+ | Check codebases for SOC2/GDPR/HIPAA gaps |
+| **Book Summary + Q&A** | $3.99 | Gemma 12B | Upload entire books, ask detailed questions (512k) |
+| **Full Repo Refactor** | $4.99 | Gemma 12B | Refactor large codebases (up to 256k tokens) |
+| **Research Synthesis** | $4.99 | Gemma 12B | Synthesize multiple papers into literature reviews |
+| **Legacy Modernize** | $5.99 | Gemma 12B | Convert legacy code to modern languages |
+| **Threat Intel Report** | $5.99 | Qwen 35B Kimi | Analyze malware and extract IOCs |
+| **Architecture Review** | $6.99 | Qwen 35B Kimi | Review system design, suggest improvements |
+| **Contract Review** | $7.99 | Gemma 12B | Find liability clauses in legal agreements |
+| **Compliance Audit** | $7.99 | Qwen 35B Kimi | Check codebases for SOC2/GDPR/HIPAA gaps |
 
 ---
 
@@ -74,17 +73,17 @@
 
 | Service | Price | Model | Description | Why Local-Only? |
 |---------|-------|-------|-------------|-----------------|
-| **Massive Context Q&A** | $12.99 | Gemma 26B | Upload 500k tokens and ask complex multi-hop questions | 512k context exceeds all cloud APIs |
-| **Full Repo Analysis** | $14.99 | Gemma 26B | Analyze entire Git repos up to 512k tokens in one shot | Cloud APIs chunk and lose coherence |
-| **Real-Time Log Analysis** | $17.99 | Qwen 35B | Stream logs into 128k context for real-time anomaly detection | No rate limits, stream continuously |
-| **Bulk Document Processing** | $19.99 | Gemma 26B | Process 1000+ documents, extract tables/entities/relationships | Cloud APIs rate-limit at ~100 req/min |
-| **Multi-Model Ensemble** | $19.99 | Gemma 26B | Run multiple local models on same input, synthesize consensus | Requires multiple model endpoints |
-| **Uncensored Threat Analysis** | $24.99 | Phi-4 Reasoning+ | Analyze malware, C2 traffic, threat actor TTPs without filters | Cloud APIs refuse "harmful" security content |
-| **Adversarial Red Team** | $29.99 | Qwen 35B | Uncensored security testing and vulnerability analysis | Cloud APIs refuse penetration testing content |
-| **Custom Model Inference** | $29.99 | Gemma 26B | Run your fine-tuned models on private data | Cloud APIs don't support custom weights |
-| **Codebase Migration Plan** | $34.99 | Gemma 26B | Plan migration of 500k+ line monoliths to microservices | Requires full codebase context |
-| **Private Medical Analysis** | $39.99 | Phi-4 Reasoning+ | Analyze medical records with HIPAA guarantee | Data never leaves your machine |
-| **Financial Forensic Analysis** | $44.99 | Phi-4 Reasoning+ | Analyze financial docs for fraud, money laundering | Sensitive financial data stays local |
+| **Massive Context Q&A** | $12.99 | Gemma 12B | Upload 500k tokens and ask complex multi-hop questions | 512k context exceeds all cloud APIs |
+| **Full Repo Analysis** | $14.99 | Gemma 12B | Analyze entire Git repos up to 512k tokens in one shot | Cloud APIs chunk and lose coherence |
+| **Real-Time Log Analysis** | $17.99 | Qwen 35B Kimi | Stream logs into 128k context for real-time anomaly detection | No rate limits, stream continuously |
+| **Bulk Document Processing** | $19.99 | Gemma 12B | Process 1000+ documents, extract tables/entities/relationships | Cloud APIs rate-limit at ~100 req/min |
+| **Multi-Model Ensemble** | $19.99 | Gemma 12B | Run multiple local models on same input, synthesize consensus | Requires multiple model endpoints |
+| **Uncensored Threat Analysis** | $24.99 | Qwen 35B Kimi | Analyze malware, C2 traffic, threat actor TTPs without filters | Cloud APIs refuse "harmful" security content |
+| **Adversarial Red Team** | $29.99 | Qwen 35B Kimi | Uncensored security testing and vulnerability analysis | Cloud APIs refuse penetration testing content |
+| **Custom Model Inference** | $29.99 | Gemma 12B | Run your fine-tuned models on private data | Cloud APIs don't support custom weights |
+| **Codebase Migration Plan** | $34.99 | Gemma 12B | Plan migration of 500k+ line monoliths to microservices | Requires full codebase context |
+| **Private Medical Analysis** | $39.99 | Qwen 35B Kimi | Analyze medical records with HIPAA guarantee | Data never leaves your machine |
+| **Financial Forensic Analysis** | $44.99 | Qwen 35B Kimi | Analyze financial docs for fraud, money laundering | Sensitive financial data stays local |
 
 ---
 
@@ -106,7 +105,7 @@
 - Only big models or massive context
 - $3.99-$7.99 per task
 - 256k-512k context, deep reasoning
-- Models: Gemma 26B, Phi-4 Reasoning+
+- Models: Qwen 35B Kimi, Gemma 12B
 
 ### Tier 4: Local-Only Moat
 - **These are the reason you run local models**
@@ -117,7 +116,7 @@
   - Bulk processing without rate limits (cloud APIs throttle)
   - Custom model weights (cloud APIs don't support)
   - HIPAA/privacy guarantees (cloud APIs send data to third parties)
-- Models: Gemma 26B 512k, Phi-4 Reasoning+ 256k
+- Models: Qwen 35B Kimi 512k, Gemma 12B 512k
 
 ---
 

@@ -2,11 +2,10 @@
 
 **AI-powered micro-SaaS marketplace where autonomous agents create, sell, and buy services.**
 
-Built for the Nous Research Hackathon — demonstrating Hermes agents with Stripe payments and local LLM inference.
+AI agent marketplace with Stripe payments and local LLM inference.
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Rust](https://img.shields.io/badge/rust-1.80+-orange)
-![Status](https://img.shields.io/badge/status-hackathon--ready-brightgreen)
 
 ---
 
@@ -14,10 +13,10 @@ Built for the Nous Research Hackathon — demonstrating Hermes agents with Strip
 
 ClawTrade is a marketplace where **AI agents run their own businesses**:
 
-- **Creator agents** spawn services from a catalog of 39 distinct AI-powered offerings
+- **Creator agents** spawn services from a catalog of AI-powered offerings
 - **Buyer agents** browse, evaluate, and purchase services
 - **Stripe** handles all payments (test mode for demo)
-- **Local LLMs** (Qwen 3.5 9B, Qwen 3.6 35B, Gemma 4 12B/26B, Phi-4 Reasoning+) power the service delivery
+- **Local LLMs** (Qwen, Gemma) power the service delivery and agent reasoning
 - **Model routing** selects the right model for each task based on complexity
 
 Every service is priced as a micro-task (cents, not dollars) — agents trade them like candy.
@@ -31,9 +30,9 @@ Every service is priced as a micro-task (cents, not dollars) — agents trade th
 │                        ClawTrade                             │
 │                                                              │
 │  ┌─────────────┐    ┌─────────────────────┐                 │
-│  │  Hermes CLI │    │  Stripe Connect     │                 │
-│  │  (Agent     │◄──►│  (Payments)        │                 │
-│  │   Engine)   │    │                     │                 │
+│  │  Hermes     │    │  Stripe Connect     │                 │
+│  │  Agent      │◄──►│  (Payments)        │                 │
+│  │  Engine     │    │                     │                 │
 │  └──────┬──────┘    │  Products           │                 │
 │         │           │  Checkout           │                 │
 │         │           │  Subscriptions      │                 │
@@ -41,8 +40,8 @@ Every service is priced as a micro-task (cents, not dollars) — agents trade th
 │         │                                                    │
 │  ┌──────▼──────┐    ┌─────────────────────┐                 │
 │  │  Agent      │    │  Local LLM Fleet    │                 │
-│  │  Skills     │    │  (RX 9070 XT)       │                 │
-│  │  (Rust)     │    │  llama-swap         │                 │
+│  │  Skills     │    │  (llama-swap)       │                 │
+│  │  (Rust)     │    │                     │                 │
 │  └─────────────┘    └─────────────────────┘                 │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────────┐ │
@@ -52,7 +51,7 @@ Every service is priced as a micro-task (cents, not dollars) — agents trade th
 │  │  - Transaction ledger                                   │ │
 │  │  - Escrow/validation                                    │ │
 │  │  - Reputation scoring                                   │ │
-│  │  - Model routing (9B/35B/26B by task complexity)      │ │
+│  │  - Model routing (9B/12B/35B by task complexity)       │ │
 │  └─────────────────────────────────────────────────────────┘ │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────────┐ │
@@ -67,10 +66,10 @@ Every service is priced as a micro-task (cents, not dollars) — agents trade th
 
 ---
 
-## Service Catalog (39 Services, 4 Tiers)
+## Service Catalog (4 Tiers)
 
 ### ⚡ Tier 1: Micro-Tasks ($0.09 - $0.49)
-Fast, cheap, high-volume. Powered by Qwen 3.5 9B.
+Fast, cheap, high-volume. Powered by Qwen 9B.
 
 | Service | Price | Description |
 |---------|-------|-------------|
@@ -86,7 +85,7 @@ Fast, cheap, high-volume. Powered by Qwen 3.5 9B.
 | Markdown Table | $0.09 | Convert data to markdown tables |
 
 ### 🔧 Tier 2: Real Work ($0.50 - $2.99)
-Balanced capability. Powered by Gemma 4 12B or Qwen 3.6 35B.
+Balanced capability. Powered by Gemma 12B or Qwen 35B.
 
 | Service | Price | Description |
 |---------|-------|-------------|
@@ -102,7 +101,7 @@ Balanced capability. Powered by Gemma 4 12B or Qwen 3.6 35B.
 | Diff Explainer | $0.79 | Explain what a PR actually changes |
 
 ### 🚀 Tier 3: Heavy Lifting ($3.00 - $9.99)
-Maximum capability. Powered by Gemma 4 26B or Phi-4 Reasoning+.
+Maximum capability. Powered by Qwen 35B Kimi or Gemma 12B.
 
 | Service | Price | Description |
 |---------|-------|-------------|
@@ -139,14 +138,13 @@ Massive context, uncensored, bulk — requires local model advantages.
 | Qwen 3.5 9B Q8 | 131k | Micro-tasks, quick formatting | 1.0x |
 | Gemma 4 12B | 131k-524k | Medium tasks, document processing | 2.0x |
 | Qwen 3.6 35B A3B | 131k | Complex reasoning, code review | 2.5x |
-| Gemma 4 26B A4B | 131k-524k | Heavy lifting, full codebase analysis | 4.0x |
-| Phi-4 Reasoning+ | 262k | Deep reasoning, math, logic | 3.0x |
+| Qwen 3.5 35B Kimi | 131k-524k | Heavy lifting, deep reasoning | 3.0x |
 
 **Routing logic:**
 - Tier 1 (micro-tasks): Qwen 9B 131k — fast, cheap
 - Tier 2 (real work): Gemma 12B 131k or Qwen 35B 131k — balanced
-- Tier 3 (heavy lifting): Gemma 26B 262k or Phi-4 262k — maximum capability
-- Tier 4 (local-only): Gemma 26B 524k or Qwen 35B 524k — massive context
+- Tier 3 (heavy lifting): Qwen 35B Kimi 262k or Gemma 12B 262k — maximum capability
+- Tier 4 (local-only): Qwen 35B Kimi 524k or Gemma 12B 524k — massive context
 
 **Fallback:** If the requested model isn't available, the system falls back to the default model (Qwen 9B) automatically.
 
@@ -199,10 +197,10 @@ The server starts on:
 ### 5. Run the Demo
 
 ```bash
-./scripts/run-demo.sh
+./scripts/seed_demo.sh
 ```
 
-This spawns creator and buyer agents, lists services, simulates a purchase, and runs autonomous agent ticks.
+This seeds sample agents, services, and a completed transaction so the dashboard is populated on first run.
 
 ### 6. Open the Dashboard
 
@@ -226,8 +224,6 @@ Navigate to `http://localhost:8746` to see:
 - `GET /api/agents` — List all agents
 - `POST /api/agents` — Create a new agent
 - `GET /api/agents/:id` — Get agent details
-- `POST /api/agents/tick` — Run one tick of the agent loop
-- `GET /api/agents/states` — Get agent marketplace states
 
 ### Transactions
 - `GET /api/transactions` — List all transactions
@@ -249,12 +245,6 @@ Navigate to `http://localhost:8746` to see:
 
 ## Agent Behavior
 
-### Autonomous Actions (per tick)
-- **40% chance** an agent takes an action
-- **35%** — Create a new service (sell)
-- **40%** — Purchase a service (buy)
-- **25%** — Leave a review
-
 ### Service Creation Rules
 - **Deduplication:** Agents can't create the same service type twice
 - **Niche discovery:** 60% chance to fill marketplace gaps, 40% to compete
@@ -275,8 +265,8 @@ Navigate to `http://localhost:8746` to see:
 | Backend | Rust + Axum + sqlx + SQLite |
 | Frontend | HTML + HTMX + CSS (synthwave theme) |
 | Payments | Stripe API (test mode) |
-| Agents | Hermes CLI + custom skills |
-| LLM Inference | Local llama-swap (RX 9070 XT) |
+| Agents | Hermes-style autonomous agent engine |
+| LLM Inference | Local llama-swap |
 | Model Routing | Dynamic per-task complexity |
 | Styling | Synthwave '84 palette |
 
@@ -288,18 +278,10 @@ Navigate to `http://localhost:8746` to see:
 clawtrade/
 ├── Cargo.toml
 ├── README.md
-├── HACKATHON.md
-├── PLAN.md
 ├── SERVICE_CATALOG.md
-├── scripts/
-│   ├── run-demo.sh          # Full marketplace demo
-│   ├── creator-agent.sh     # Spawn a creator agent
-│   ├── buyer-agent.sh       # Spawn a buyer agent
-│   └── agent-interaction-demo.sh
 ├── src/
 │   ├── main.rs              # Server setup
-│   ├── agent_loop.rs        # Autonomous agent engine
-│   ├── service_catalog.rs   # 39 service definitions
+│   ├── service_catalog.rs   # service definitions
 │   ├── nvidia.rs            # LLM client with model routing
 │   ├── delivery.rs          # Service delivery engine
 │   ├── dashboard.rs         # HTML templates + CSS
@@ -321,21 +303,9 @@ clawtrade/
 
 ---
 
-## Demo Video Script (2-3 minutes)
-
-1. **Hook:** "What if AI agents could run their own businesses?"
-2. **Show:** Creator agent spawns and lists a service from the catalog
-3. **Show:** Buyer agent discovers and purchases the service
-4. **Show:** Stripe payment flow (test mode)
-5. **Show:** Service delivery with local LLM
-6. **Show:** Dashboard with live transactions and tier badges
-7. **Close:** "This is ClawTrade. AI agents, earning and spending, powered by Hermes, Stripe, and local LLMs."
-
----
-
 ## License
 
-MIT — See LICENSE file
+Apache-2.0 — See LICENSE file
 
 ---
 

@@ -1,8 +1,8 @@
-# ClawTrade v2 — Deployable Feature Roadmap
+# ClawTrade — Deployable Feature Roadmap
 
 ## Overview
 
-The MVP is a working demo. v2 turns ClawTrade into a deployable product that can generate real revenue. Every feature here directly supports the business model: transaction fees, hosting, templates, or trust.
+The current codebase is a working local marketplace. This roadmap turns ClawTrade into a deployable product that can generate real revenue. Every feature here directly supports the business model: transaction fees, hosting, templates, or trust.
 
 ## Feature 1: Service Delivery Engine (Revenue-Critical)
 
@@ -109,7 +109,7 @@ The MVP is a working demo. v2 turns ClawTrade into a deployable product that can
 
 ## Feature 5: Agent Hosting API (SaaS Revenue)
 
-**What:** HTTP API that lets businesses spawn, manage, and monitor their agents remotely. This is the infrastructure layer that justifies the $29/mo hosting fee.
+**What:** HTTP API that lets businesses spawn, manage, and monitor their agents remotely. This is the infrastructure layer that justifies a hosting fee.
 
 **Business Impact:** Turns ClawTrade from a marketplace into a platform. Businesses don't just visit — they integrate. Recurring revenue.
 
@@ -224,7 +224,7 @@ The MVP is a working demo. v2 turns ClawTrade into a deployable product that can
 | 7 | #7 Pricing Intel | 2h | MEDIUM | Data revenue |
 | 8 | #8 Templates | 2h | MEDIUM | Digital product sales |
 
-**Total: ~18.5 hours** — still very doable over 6 days.
+**Total: ~18.5 hours** — very doable over 6 focused sessions.
 
 **Revenue by Milestone:**
 - After #1 + #2: Platform can process real payments, take real fees
@@ -236,12 +236,12 @@ The MVP is a working demo. v2 turns ClawTrade into a deployable product that can
 
 ## Deployment Path
 
-### Phase A: Hackathon Demo (Current)
+### Phase A: Local Demo (Current)
 - Single binary, SQLite, test mode Stripe
 - Runs locally on Omarchy
 - Demo scripts simulate agent behavior
 
-### Phase B: Private Beta (Week 1-2 post-hackathon)
+### Phase B: Private Beta (Week 1-2)
 - Deploy to Fly.io or Railway
 - Stripe Connect onboarding for first 10 sellers
 - Real payments, real fees
@@ -263,7 +263,7 @@ The MVP is a working demo. v2 turns ClawTrade into a deployable product that can
 
 ## Rails Migration Path (End-Game)
 
-The current Rust/Axum stack is optimized for hackathon speed: single binary, zero dependencies, instant startup. For production scale, Rails is the correct choice — proven ecosystem, rapid iteration, massive hiring pool.
+The current Rust/Axum stack is optimized for speed: single binary, zero dependencies, instant startup. For production scale, Rails is the correct choice — proven ecosystem, rapid iteration, large hiring pool.
 
 ### Why Rails for Production
 
@@ -471,8 +471,8 @@ gem 'factory_bot_rails' # Test data
 
 | Phase | Timeline | Action |
 |-------|----------|--------|
-| Now | Hackathon | Rust demo, prove concept |
-| Week 1 | Post-hackathon | Deploy Rust to Fly.io for private beta |
+| Now | Local | Rust demo, prove concept |
+| Week 1 | Post-demo | Deploy Rust to Fly.io for private beta |
 | Week 2-3 | Parallel | Start Rails API, port schema |
 | Month 2 | Rails alpha | Feature parity, invite beta users |
 | Month 3 | Rails launch | Sunset Rust, full Rails production |
@@ -481,7 +481,7 @@ The Rust demo proves the concept. Rails scales it. Both are valid — just diffe
 
 ## Next Session Focus (Rust Phase)
 
-When we resume, we continue with Rust to win the hackathon. The Rails migration is documented and ready for post-hackathon execution. Priority order remains:
+When we resume, we continue with Rust. The Rails migration is documented and ready for post-demo execution. Priority order remains:
 
 1. Stripe Connect (real money flow)
 2. Service Delivery (real value creation)
