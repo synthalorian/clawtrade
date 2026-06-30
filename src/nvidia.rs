@@ -59,7 +59,7 @@ impl NvidiaClient {
             messages: vec![
                 NvidiaMessage {
                     role: "system".to_string(),
-                    content: "You are an autonomous AI merchant agent on the ClawTrade marketplace. You make economic decisions: pricing, service creation, purchasing. Respond with concise, actionable decisions.".to_string(),
+                    content: "You are an autonomous AI merchant agent on the ClawTrade marketplace. You make economic decisions: pricing, service creation, purchasing. Respond ONLY with the requested JSON and keep reasoning under 20 words.".to_string(),
                 },
                 NvidiaMessage {
                     role: "user".to_string(),
@@ -67,7 +67,7 @@ impl NvidiaClient {
                 },
             ],
             temperature: 0.7,
-            max_tokens: 512,
+            max_tokens: 128,
             top_p: 0.9,
         };
 
@@ -95,7 +95,8 @@ impl NvidiaClient {
             messages: vec![
                 NvidiaMessage {
                     role: "system".to_string(),
-                    content: "Summarize the following text into 3 bullet points. Be concise.".to_string(),
+                    content: "Summarize the following text into 3 bullet points. Be concise."
+                        .to_string(),
                 },
                 NvidiaMessage {
                     role: "user".to_string(),
@@ -213,7 +214,11 @@ impl LocalLlmClient {
         }
     }
 
-    pub async fn chat(&self, system: &str, user: &str) -> Result<String> {
+    pub async fn chat(&self,
+        system: &str,
+        user: &str,
+        max_tokens: i32,
+    ) -> Result<String> {
         let req = serde_json::json!({
             "model": self.model,
             "messages": [
@@ -221,7 +226,7 @@ impl LocalLlmClient {
                 {"role": "user", "content": user}
             ],
             "temperature": 0.7,
-            "max_tokens": 512
+            "max_tokens": max_tokens
         });
 
         let res = self
@@ -234,31 +239,38 @@ impl LocalLlmClient {
 
         let status = res.status();
         let text = res.text().await?;
-        
+
         if !status.is_success() {
             anyhow::bail!("LLM API returned {}: {}", status, text);
         }
 
         let data: serde_json::Value = serde_json::from_str(&text)
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, text))?;
-        
+
         let mut result = data["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("")
             .to_string();
-        
+
         // Filter out tool call patterns and special token formats
-        let tool_patterns = ["test_connection_check", "greet_user", "function_call", "tool_call", "<|channel>thought", "<|channel|>"];
+        let tool_patterns = [
+            "test_connection_check",
+            "greet_user",
+            "function_call",
+            "tool_call",
+            "<|channel>thought",
+            "<|channel|>",
+        ];
         for pattern in &tool_patterns {
             result = result.replace(pattern, "");
         }
         result = result.trim().to_string();
-        
+
         Ok(result)
     }
 
     pub async fn chat_simple(&self, prompt: &str) -> Result<String> {
-        self.chat("You are a helpful AI assistant.", prompt).await
+        self.chat("You are a helpful AI assistant.", prompt, 512).await
     }
 
     /// Chat with a specific model override. Falls back to default model if the
@@ -334,14 +346,27 @@ impl LocalLlmClient {
                 let retry_text = retry_res.text().await?;
                 let retry_duration_ms = retry_start.elapsed().as_millis() as i64;
                 if retry_status.is_success() {
-                    let data: serde_json::Value = serde_json::from_str(&retry_text)
-                        .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}. Raw: {}", e, retry_text))?;
+                    let data: serde_json::Value =
+                        serde_json::from_str(&retry_text).map_err(|e| {
+                            anyhow::anyhow!(
+                                "Failed to parse LLM response: {}. Raw: {}",
+                                e,
+                                retry_text
+                            )
+                        })?;
                     let mut result = data["choices"][0]["message"]["content"]
                         .as_str()
                         .unwrap_or("")
                         .to_string();
                     // Filter out tool call patterns and special token formats
-                    let tool_patterns = ["test_connection_check", "greet_user", "function_call", "tool_call", "<|channel>thought", "<|channel|>"];
+                    let tool_patterns = [
+                        "test_connection_check",
+                        "greet_user",
+                        "function_call",
+                        "tool_call",
+                        "<|channel>thought",
+                        "<|channel|>",
+                    ];
                     for pattern in &tool_patterns {
                         result = result.replace(pattern, "");
                     }
@@ -351,7 +376,8 @@ impl LocalLlmClient {
                     self.record_inference(InferenceRecord {
                         service_name: service_name.clone(),
                         model: model.to_string(),
-                        start_time: chrono::Utc::now() - chrono::Duration::milliseconds(retry_duration_ms),
+                        start_time: chrono::Utc::now()
+                            - chrono::Duration::milliseconds(retry_duration_ms),
                         end_time: Some(chrono::Utc::now()),
                         estimated_tokens,
                         actual_tokens: Some(actual_tokens),
@@ -359,19 +385,25 @@ impl LocalLlmClient {
                         fallback_reason: None,
                         tier: tier.to_string(),
                         duration_ms: retry_duration_ms,
-                    }).await;
+                    })
+                    .await;
                     // Broadcast completed
-                    crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
-                        service_name: service_name.clone(),
-                        model: model.to_string(),
-                        actual_tokens,
-                        duration_ms: retry_duration_ms,
-                    });
+                    crate::websocket::broadcast_event(
+                        crate::websocket::DashboardEvent::InferenceCompleted {
+                            service_name: service_name.clone(),
+                            model: model.to_string(),
+                            actual_tokens,
+                            duration_ms: retry_duration_ms,
+                        },
+                    );
                     return Ok(result);
                 }
             }
             // Model not loaded or failed to start — fallback to default model
-            eprintln!("[llm] Model {} failed ({}), falling back to {}", model, status, self.model);
+            eprintln!(
+                "[llm] Model {} failed ({}), falling back to {}",
+                model, status, self.model
+            );
             // Record fallback
             self.record_inference(InferenceRecord {
                 service_name: service_name.clone(),
@@ -384,12 +416,16 @@ impl LocalLlmClient {
                 fallback_reason: Some(format!("HTTP {}", status)),
                 tier: tier.to_string(),
                 duration_ms,
-            }).await;
+            })
+            .await;
             crate::websocket::broadcast_event(crate::websocket::DashboardEvent::ModelFallback {
                 requested: model.to_string(),
-                fallback_reason: format!("Model {} failed ({}), falling back to {}", model, status, self.model),
+                fallback_reason: format!(
+                    "Model {} failed ({}), falling back to {}",
+                    model, status, self.model
+                ),
             });
-            return self.chat(system, user).await;
+            return self.chat(system, user, max_tokens).await;
         }
 
         let data: serde_json::Value = serde_json::from_str(&text)
@@ -399,15 +435,24 @@ impl LocalLlmClient {
             .as_str()
             .unwrap_or("")
             .to_string();
-        
+
         // Filter out tool call patterns and special token formats that some models return
-        let tool_patterns = ["test_connection_check", "greet_user", "function_call", "tool_call", "<|channel>thought", "<channel|>"];
+        let tool_patterns = [
+            "test_connection_check",
+            "greet_user",
+            "function_call",
+            "tool_call",
+            "<|channel>thought",
+            "<channel|>",
+        ];
         for pattern in &tool_patterns {
             result = result.replace(pattern, "");
         }
         result = result.trim().to_string();
         if result.is_empty() {
-            result = "The model returned an empty response. Please try again with a different input.".to_string();
+            result =
+                "The model returned an empty response. Please try again with a different input."
+                    .to_string();
         }
         let actual_tokens = result.len() as i64 / 4;
 
@@ -423,7 +468,8 @@ impl LocalLlmClient {
             fallback_reason: None,
             tier: tier.to_string(),
             duration_ms,
-        }).await;
+        })
+        .await;
 
         // Broadcast completed
         crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
@@ -455,7 +501,7 @@ impl LocalLlmClient {
             .timeout(std::time::Duration::from_secs(30))
             .send()
             .await?;
-        
+
         if res.status().is_success() {
             eprintln!("[llm] Auto-loaded model: {}", model);
             Ok(())
@@ -509,14 +555,12 @@ pub struct LlmClient {
 impl LlmClient {
     #[allow(dead_code)]
     pub fn new() -> Self {
-        let nvidia = std::env::var("NVIDIA_API_KEY")
-            .ok()
-            .map(NvidiaClient::new);
+        let nvidia = std::env::var("NVIDIA_API_KEY").ok().map(NvidiaClient::new);
 
-        let local_url = std::env::var("LLM_LOCAL_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string()); // Default to llama-swap
-        let local_model = std::env::var("LLM_LOCAL_MODEL")
-            .unwrap_or_else(|_| "synthclaw-9b-131k".to_string());
+        let local_url =
+            std::env::var("LLM_LOCAL_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string()); // Default to llama-swap
+        let local_model =
+            std::env::var("LLM_LOCAL_MODEL").unwrap_or_else(|_| "synthclaw-9b-131k".to_string());
 
         Self {
             nvidia,
@@ -551,11 +595,11 @@ impl LlmClient {
                 Ok(res) => Ok(res),
                 Err(e) => {
                     eprintln!("[llm] NVIDIA fallback to local: {}", e);
-                    self.local.chat_simple(prompt).await
+                    self.local.chat("You are a helpful AI assistant.", prompt, 128).await
                 }
             }
         } else {
-            self.local.chat_simple(prompt).await
+            self.local.chat("You are a helpful AI assistant.", prompt, 128).await
         };
 
         let duration_ms = start.elapsed().as_millis() as i64;
@@ -570,7 +614,11 @@ impl LlmClient {
                 end_time: Some(chrono::Utc::now()),
                 estimated_tokens,
                 actual_tokens: result.as_ref().ok().map(|_| actual_tokens),
-                status: if result.is_ok() { "completed".to_string() } else { "failed".to_string() },
+                status: if result.is_ok() {
+                    "completed".to_string()
+                } else {
+                    "failed".to_string()
+                },
                 fallback_reason: None,
                 tier: tier.to_string(),
                 duration_ms,
@@ -609,11 +657,15 @@ impl LlmClient {
                 Ok(res) => Ok(res),
                 Err(e) => {
                     eprintln!("[llm] NVIDIA fallback to local: {}", e);
-                    self.local.chat_simple(&format!("Summarize: {}", text)).await
+                    self.local
+                        .chat_simple(&format!("Summarize: {}", text))
+                        .await
                 }
             }
         } else {
-            self.local.chat_simple(&format!("Summarize: {}", text)).await
+            self.local
+                .chat_simple(&format!("Summarize: {}", text))
+                .await
         };
 
         let duration_ms = start.elapsed().as_millis() as i64;
@@ -628,12 +680,18 @@ impl LlmClient {
                 end_time: Some(chrono::Utc::now()),
                 estimated_tokens,
                 actual_tokens: result.as_ref().ok().map(|_| actual_tokens),
-                status: if result.is_ok() { "completed".to_string() } else { "failed".to_string() },
+                status: if result.is_ok() {
+                    "completed".to_string()
+                } else {
+                    "failed".to_string()
+                },
                 fallback_reason: None,
                 tier: tier.to_string(),
                 duration_ms,
             });
-            if history.len() > 50 { history.remove(0); }
+            if history.len() > 50 {
+                history.remove(0);
+            }
         }
 
         crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
@@ -678,11 +736,15 @@ impl LlmClient {
                 Ok(res) => Ok(res),
                 Err(e) => {
                     eprintln!("[llm] NVIDIA fallback to local: {}", e);
-                    self.local.chat_simple(&format!("Analyze market data: {}", data)).await
+                    self.local
+                        .chat_simple(&format!("Analyze market data: {}", data))
+                        .await
                 }
             }
         } else {
-            self.local.chat_simple(&format!("Analyze market data: {}", data)).await
+            self.local
+                .chat_simple(&format!("Analyze market data: {}", data))
+                .await
         };
 
         let duration_ms = start.elapsed().as_millis() as i64;
@@ -697,12 +759,18 @@ impl LlmClient {
                 end_time: Some(chrono::Utc::now()),
                 estimated_tokens,
                 actual_tokens: result.as_ref().ok().map(|_| actual_tokens),
-                status: if result.is_ok() { "completed".to_string() } else { "failed".to_string() },
+                status: if result.is_ok() {
+                    "completed".to_string()
+                } else {
+                    "failed".to_string()
+                },
                 fallback_reason: None,
                 tier: tier.to_string(),
                 duration_ms,
             });
-            if history.len() > 50 { history.remove(0); }
+            if history.len() > 50 {
+                history.remove(0);
+            }
         }
 
         crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
@@ -764,7 +832,8 @@ impl LlmClient {
                     user = user.replace("{document}", codebase);
                 }
             }
-        } else if user_request.contains("---DOCUMENT---") && user_request.contains("---QUESTION---") {
+        } else if user_request.contains("---DOCUMENT---") && user_request.contains("---QUESTION---")
+        {
             let parts: Vec<&str> = user_request.split("---DOCUMENT---").collect();
             if parts.len() >= 2 {
                 let after = parts[1].split("---QUESTION---").collect::<Vec<&str>>();
@@ -827,7 +896,10 @@ impl LlmClient {
         });
 
         let start = std::time::Instant::now();
-        let result = self.local.chat_with_model(&model, system_prompt, user_prompt, max_tokens).await;
+        let result = self
+            .local
+            .chat_with_model(&model, system_prompt, user_prompt, max_tokens)
+            .await;
         let duration_ms = start.elapsed().as_millis() as i64;
 
         match &result {
@@ -847,15 +919,19 @@ impl LlmClient {
                     tier: tier.to_string(),
                     duration_ms,
                 });
-                if history.len() > 50 { history.remove(0); }
+                if history.len() > 50 {
+                    history.remove(0);
+                }
                 drop(history);
                 // Broadcast completed
-                crate::websocket::broadcast_event(crate::websocket::DashboardEvent::InferenceCompleted {
-                    service_name: service_name.to_string(),
-                    model: model.clone(),
-                    actual_tokens,
-                    duration_ms,
-                });
+                crate::websocket::broadcast_event(
+                    crate::websocket::DashboardEvent::InferenceCompleted {
+                        service_name: service_name.to_string(),
+                        model: model.clone(),
+                        actual_tokens,
+                        duration_ms,
+                    },
+                );
             }
             Err(e) => {
                 // Record failure
@@ -872,7 +948,9 @@ impl LlmClient {
                     tier: tier.to_string(),
                     duration_ms,
                 });
-                if history.len() > 50 { history.remove(0); }
+                if history.len() > 50 {
+                    history.remove(0);
+                }
             }
         }
 
@@ -887,12 +965,12 @@ mod tests {
     #[test]
     fn test_deliver_service_placeholder_substitution() {
         let def = crate::service_catalog::get_service_definition("git_commit_msg").unwrap();
-        
+
         // Simple input substitution
         let user_request = "feat: add user auth";
         let mut user = def.user_prompt_template.to_string();
         user = user.replace("{input}", user_request);
-        
+
         assert!(user.contains("feat: add user auth"));
         assert!(!user.contains("{input}"));
     }
@@ -900,11 +978,12 @@ mod tests {
     #[test]
     fn test_deliver_service_codebase_question_split() {
         let def = crate::service_catalog::get_service_definition("codebase_qa").unwrap();
-        
-        let user_request = "---CODEBASE---\nfn main() {}\n---QUESTION---\nWhere is the entry point?";
+
+        let user_request =
+            "---CODEBASE---\nfn main() {}\n---QUESTION---\nWhere is the entry point?";
         let mut user = def.user_prompt_template.to_string();
         user = user.replace("{input}", user_request);
-        
+
         if user_request.contains("---CODEBASE---") && user_request.contains("---QUESTION---") {
             let parts: Vec<&str> = user_request.split("---CODEBASE---").collect();
             let after = parts[1].split("---QUESTION---").collect::<Vec<&str>>();
@@ -913,7 +992,7 @@ mod tests {
             user = user.replace("{codebase}", codebase);
             user = user.replace("{question}", question);
         }
-        
+
         assert!(user.contains("fn main() {}"));
         assert!(user.contains("Where is the entry point?"));
         assert!(!user.contains("{codebase}"));
@@ -936,14 +1015,20 @@ mod tests {
         let req = NvidiaChatRequest {
             model: "test-model".to_string(),
             messages: vec![
-                NvidiaMessage { role: "system".to_string(), content: "You are a test".to_string() },
-                NvidiaMessage { role: "user".to_string(), content: "Hello".to_string() },
+                NvidiaMessage {
+                    role: "system".to_string(),
+                    content: "You are a test".to_string(),
+                },
+                NvidiaMessage {
+                    role: "user".to_string(),
+                    content: "Hello".to_string(),
+                },
             ],
             temperature: 0.7,
             max_tokens: 512,
             top_p: 0.9,
         };
-        
+
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("test-model"));
         assert!(json.contains("You are a test"));

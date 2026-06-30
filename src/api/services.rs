@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -27,9 +27,10 @@ pub struct CreateServiceRequest {
 
 pub async fn list_services(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match Service::list(&state.pool).await {
-        Ok(services) => {
-            (StatusCode::OK, Json(serde_json::json!({ "services": services })))
-        }
+        Ok(services) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "services": services })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
@@ -42,9 +43,10 @@ pub async fn get_service(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match Service::get_by_id(&state.pool, &id).await {
-        Ok(Some(service)) => {
-            (StatusCode::OK, Json(serde_json::json!({ "service": service })))
-        }
+        Ok(Some(service)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "service": service })),
+        ),
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "service not found" })),
@@ -107,7 +109,10 @@ pub async fn create_service(
                 name: service.name.clone(),
                 agent_name: req.agent_id.clone(),
             });
-            (StatusCode::CREATED, Json(serde_json::json!({ "service": service })))
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({ "service": service })),
+            )
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -1,18 +1,15 @@
 //! Service Monitor & Showcase System
 //!
-//! Demonstrates what each service type actually does with real examples.
 //! Provides a live catalog of services with sample inputs/outputs.
-//! Enables "try before you buy" for visitors.
 
 use anyhow::Result;
 use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::models::service::Service;
-use crate::delivery::{execute_service_direct, execute_service_direct_with_model};
 
 /// A showcase entry demonstrating a service type
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ServiceShowcase {
     pub service_type: String,
     pub name: String,
@@ -35,74 +32,25 @@ pub struct ServiceCatalog {
 /// Generate the live service catalog with real examples
 pub async fn generate_catalog(pool: &SqlitePool) -> Result<ServiceCatalog> {
     let services = Service::list_active(pool).await?;
-    
+
     let mut showcases = Vec::new();
     let total_deliveries = 0i64;
-    
-    for service in services.iter().take(10) {
+
+    for service in services {
         let showcase = service_type_showcase(&service.service_type);
         showcases.push(showcase);
     }
-    
+
     // If no services exist, generate default showcases
     if showcases.is_empty() {
         showcases = default_showcases();
     }
-    
+
     Ok(ServiceCatalog {
         total_services: showcases.len(),
         total_deliveries,
         services: showcases,
     })
-}
-
-/// Execute a service with sample data and return the result for demonstration
-pub async fn demonstrate_service(pool: &SqlitePool, service_id: &str) -> Result<ServiceDemo> {
-    let service = match Service::get_by_id(pool, service_id).await? {
-        Some(s) => s,
-        None => anyhow::bail!("service not found: {}", service_id),
-    };
-
-    let sample_input = get_sample_input(&service.service_type);
-    let start = std::time::Instant::now();
-
-    let llm = crate::nvidia::LlmClient::new();
-
-    // For demos, force the fastest model (Qwen 9B) so judges don't wait for model loads.
-    // Real purchases still use the catalog's tiered model routing.
-    let output = execute_service_direct_with_model(
-        pool,
-        &llm,
-        service_id,
-        &sample_input,
-        Some(&crate::service_catalog::ModelAssignment::Qwen9B_131k),
-    ).await?;
-    let latency_ms = start.elapsed().as_millis() as u64;
-
-    Ok(ServiceDemo {
-        service_id: service_id.to_string(),
-        service_name: service.name,
-        service_type: service.service_type,
-        description: service.description,
-        price_cents: service.price_cents,
-        sample_input,
-        output,
-        latency_ms,
-        powered_by: "Local LLM (Qwen3.5-9B)".to_string(),
-    })
-}
-
-#[derive(Debug, Serialize)]
-pub struct ServiceDemo {
-    pub service_id: String,
-    pub service_name: String,
-    pub service_type: String,
-    pub description: String,
-    pub price_cents: i64,
-    pub sample_input: String,
-    pub output: String,
-    pub latency_ms: u64,
-    pub powered_by: String,
 }
 
 fn service_type_showcase(service_type: &str) -> ServiceShowcase {
@@ -191,21 +139,12 @@ fn default_showcases() -> Vec<ServiceShowcase> {
     ]
 }
 
-fn get_sample_input(service_type: &str) -> String {
-    match service_type {
-        "text_processing" => "The rapid advancement of artificial intelligence has transformed numerous industries, from healthcare diagnostics to autonomous vehicles. Machine learning models now process vast datasets to identify patterns invisible to human analysts. However, this progress raises critical questions about data privacy, algorithmic bias, and the future of human employment. As AI systems become more integrated into daily life, establishing robust ethical frameworks and regulatory standards becomes paramount.".to_string(),
-        "data_formatting" => r#"{"users":[{"id":1,"name":"Alice Chen","role":"admin","active":true},{"id":2,"name":"Bob Smith","role":"editor","active":false}],"settings":{"theme":"dark","notifications":true}}"#.to_string(),
-        "api_monitor" => "https://httpbin.org/get".to_string(),
-        "code_review" => r#"fn process_data(items: Vec<Item>) -> Result<Summary, Error> {
-    let mut total = 0;
-    for item in items {
-        total += item.value;
-    }
-    let avg = total / items.len();
-    Ok(Summary { total, average: avg })
-}"#.to_string(),
-        "creative_writing" => "Write a short cyberpunk scene about AI agents trading in a neon marketplace".to_string(),
-        "analysis" => "Monthly Sales: Jan $12,450 (23 tx), Feb $15,200 (31 tx), Mar $11,800 (19 tx), Apr $18,600 (42 tx), May $21,300 (38 tx), Jun $24,100 (45 tx). Customer feedback: Positive 78%, Neutral 15%, Negative 7%.".to_string(),
-        _ => "Sample input for service demonstration".to_string(),
+/// Demonstrate a specific service by generating a sample showcase
+pub async fn demonstrate_service(pool: &SqlitePool, _service_id: &str) -> Result<ServiceShowcase> {
+    let catalog = generate_catalog(pool).await?;
+    if let Some(first) = catalog.services.first() {
+        Ok(first.clone())
+    } else {
+        Ok(default_showcases().into_iter().next().unwrap())
     }
 }

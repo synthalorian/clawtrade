@@ -75,8 +75,12 @@ pub async fn trigger_delivery(pool: &SqlitePool, transaction_id: &str) -> Result
                 Some(&service.name),
                 Some(tx.amount_cents),
                 "completed",
-                Some(&format!("Auto-released escrow for {} after delivery", service.name)),
-            ).await;
+                Some(&format!(
+                    "Auto-released escrow for {} after delivery",
+                    service.name
+                )),
+            )
+            .await;
             Ok(())
         }
         Err(e) => {
@@ -127,12 +131,22 @@ pub async fn execute_service_direct_with_model(
     // 🛡️ PROMPT INJECTION DEFENSE — sanitize user input before LLM consumption
     let sanitized_input = match crate::prompt_defense::sanitize_input(user_input) {
         crate::prompt_defense::SanitizationResult::Clean(cleaned) => cleaned,
-        crate::prompt_defense::SanitizationResult::Sanitized { cleaned, violations, .. } => {
-            eprintln!("[prompt_defense] Input sanitized. Violations: {:?}", violations);
+        crate::prompt_defense::SanitizationResult::Sanitized {
+            _original: _,
+            cleaned,
+            violations,
+        } => {
+            eprintln!(
+                "[prompt_defense] Input sanitized. Violations: {:?}",
+                violations
+            );
             cleaned
         }
         crate::prompt_defense::SanitizationResult::Blocked { reason, violations } => {
-            eprintln!("[prompt_defense] Input blocked: {}. Violations: {:?}", reason, violations);
+            eprintln!(
+                "[prompt_defense] Input blocked: {}. Violations: {:?}",
+                reason, violations
+            );
             return Ok(crate::prompt_defense::blocked_message(&violations));
         }
     };
@@ -146,7 +160,16 @@ pub async fn execute_service_direct_with_model(
     // Deliver using the shared LLM client + catalog's prompt template + model routing
     let start = std::time::Instant::now();
 
-    match llm.deliver_service_with_prompt(&service.name, model, &hardened_system, &def.user_prompt_template.replace("{input}", &sanitized_input)).await {
+    match llm
+        .deliver_service_with_prompt(
+            &service.name,
+            model,
+            &hardened_system,
+            &def.user_prompt_template
+                .replace("{input}", &sanitized_input),
+        )
+        .await
+    {
         Ok(result) => {
             let execution_time_ms = start.elapsed().as_millis() as u64;
             let model_name = model.model_name();
@@ -182,10 +205,10 @@ pub async fn execute_service_direct_with_model(
 #[allow(dead_code)]
 async fn deliver_text_processing(service: &Service, _tx: &Transaction) -> Result<String> {
     let client = LlmClient::new();
-    
+
     // Generate sample content based on service name
     let sample_text = generate_sample_text(&service.name);
-    
+
     let prompt = format!(
         "Task: {}\n\nInstructions: {}\n\nPlease process the following text and provide a detailed, useful result:\n\n{}",
         service.name,
@@ -210,7 +233,7 @@ async fn deliver_text_processing(service: &Service, _tx: &Transaction) -> Result
 
 async fn execute_text_processing(service: &Service, user_input: &str) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let prompt = format!(
         "Task: {}\n\nInstructions: {}\n\nPlease process the following user text and provide a detailed, useful result:\n\n{}",
         service.name,
@@ -236,9 +259,9 @@ async fn execute_text_processing(service: &Service, user_input: &str) -> Result<
 
 async fn deliver_data_formatting(service: &Service, _tx: &Transaction) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let sample_data = generate_sample_json();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nFormat and improve the following data. Return well-structured, validated output:\n\n{}",
         service.name,
@@ -262,7 +285,7 @@ async fn deliver_data_formatting(service: &Service, _tx: &Transaction) -> Result
 
 async fn execute_data_formatting(service: &Service, user_input: &str) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nFormat and improve the following user data. Return well-structured, validated output:\n\n{}",
         service.name,
@@ -302,7 +325,7 @@ async fn deliver_api_monitor(service: &Service, _tx: &Transaction) -> Result<Str
     };
     let latency_ms = start.elapsed().as_millis();
     let status = response.status().as_u16();
-    
+
     let body_preview = match response.text().await {
         Ok(text) => {
             if text.len() > 500 {
@@ -345,8 +368,9 @@ async fn execute_api_monitor(service: &Service, user_input: &str) -> Result<Stri
     };
     let latency_ms = start.elapsed().as_millis();
     let status = response.status().as_u16();
-    
-    let headers: Vec<String> = response.headers()
+
+    let headers: Vec<String> = response
+        .headers()
         .iter()
         .map(|(k, v)| format!("  {}: {}", k, v.to_str().unwrap_or("(binary)")))
         .collect();
@@ -366,9 +390,9 @@ async fn execute_api_monitor(service: &Service, user_input: &str) -> Result<Stri
 
 async fn deliver_code_review(service: &Service, _tx: &Transaction) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let sample_code = generate_sample_code();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nReview the following code and provide specific, actionable feedback:\n\n```\n{}\n```",
         service.name,
@@ -392,7 +416,7 @@ async fn deliver_code_review(service: &Service, _tx: &Transaction) -> Result<Str
 
 async fn execute_code_review(service: &Service, user_input: &str) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nReview the following user code and provide specific, actionable feedback:\n\n```\n{}\n```",
         service.name,
@@ -418,7 +442,7 @@ async fn execute_code_review(service: &Service, user_input: &str) -> Result<Stri
 
 async fn deliver_creative_writing(service: &Service, _tx: &Transaction) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nCreate an original piece of creative writing. Make it vivid, engaging, and memorable:\n\nTheme: Neon-lit cyberpunk marketplace where AI agents trade services under holographic signs.",
         service.name,
@@ -440,7 +464,7 @@ async fn deliver_creative_writing(service: &Service, _tx: &Transaction) -> Resul
 
 async fn execute_creative_writing(service: &Service, user_input: &str) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nCreate an original piece of creative writing based on this user request:\n\n{}",
         service.name,
@@ -466,9 +490,9 @@ async fn execute_creative_writing(service: &Service, user_input: &str) -> Result
 
 async fn deliver_analysis(service: &Service, _tx: &Transaction) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let sample_data = generate_sample_analysis_data();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nAnalyze the following data and provide insights with specific recommendations:\n\n{}",
         service.name,
@@ -492,7 +516,7 @@ async fn deliver_analysis(service: &Service, _tx: &Transaction) -> Result<String
 
 async fn execute_analysis(service: &Service, user_input: &str) -> Result<String> {
     let client = LlmClient::new();
-    
+
     let prompt = format!(
         "You are {}. {}\n\nAnalyze the following user data and provide insights with specific recommendations:\n\n{}",
         service.name,
@@ -563,7 +587,8 @@ fn generate_sample_code() -> String {
     }
     let avg = total / items.len();
     Ok(Summary { total, average: avg })
-}"#.to_string()
+}"#
+    .to_string()
 }
 
 fn generate_sample_analysis_data() -> String {

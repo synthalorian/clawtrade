@@ -59,11 +59,10 @@ impl Transaction {
     }
 
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Self>> {
-        let txs = sqlx::query_as::<_, Transaction>(
-            "SELECT * FROM transactions ORDER BY created_at DESC",
-        )
-        .fetch_all(pool)
-        .await?;
+        let txs =
+            sqlx::query_as::<_, Transaction>("SELECT * FROM transactions ORDER BY created_at DESC")
+                .fetch_all(pool)
+                .await?;
         Ok(txs)
     }
 
@@ -75,27 +74,31 @@ impl Transaction {
         Ok(tx)
     }
 
-    pub async fn update_stripe_session(pool: &SqlitePool, id: &str, session_id: &str) -> Result<()> {
-        sqlx::query(
-            "UPDATE transactions SET stripe_session_id = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(session_id)
-        .bind(Utc::now())
-        .bind(id)
-        .execute(pool)
-        .await?;
+    pub async fn update_stripe_session(
+        pool: &SqlitePool,
+        id: &str,
+        session_id: &str,
+    ) -> Result<()> {
+        sqlx::query("UPDATE transactions SET stripe_session_id = ?, updated_at = ? WHERE id = ?")
+            .bind(session_id)
+            .bind(Utc::now())
+            .bind(id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
-    pub async fn update_stripe_transfer(pool: &SqlitePool, id: &str, transfer_id: &str) -> Result<()> {
-        sqlx::query(
-            "UPDATE transactions SET stripe_transfer_id = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(transfer_id)
-        .bind(Utc::now())
-        .bind(id)
-        .execute(pool)
-        .await?;
+    pub async fn update_stripe_transfer(
+        pool: &SqlitePool,
+        id: &str,
+        transfer_id: &str,
+    ) -> Result<()> {
+        sqlx::query("UPDATE transactions SET stripe_transfer_id = ?, updated_at = ? WHERE id = ?")
+            .bind(transfer_id)
+            .bind(Utc::now())
+            .bind(id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -117,7 +120,8 @@ impl Transaction {
         .fetch_optional(pool)
         .await?
         {
-            crate::models::agent::Agent::increment_sales(pool, &tx.seller_id, tx.amount_cents).await?;
+            crate::models::agent::Agent::increment_sales(pool, &tx.seller_id, tx.amount_cents)
+                .await?;
         }
 
         Ok(())
@@ -138,13 +142,11 @@ impl Transaction {
 
     pub async fn dispute_transaction(pool: &SqlitePool, id: &str) -> Result<()> {
         let now = Utc::now();
-        sqlx::query(
-            "UPDATE transactions SET status = 'disputed', updated_at = ? WHERE id = ?",
-        )
-        .bind(now)
-        .bind(id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE transactions SET status = 'disputed', updated_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 }

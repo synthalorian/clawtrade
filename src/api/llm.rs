@@ -1,11 +1,7 @@
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -68,14 +64,4 @@ pub async fn analyze(
             }),
         ),
     }
-}
-
-pub async fn inference_history(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    let history = state.llm.get_inference_history().await;
-    (StatusCode::OK, Json(serde_json::json!({
-        "history": history,
-        "count": history.len(),
-    })))
 }

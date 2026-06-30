@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -42,9 +42,10 @@ pub async fn get_transaction(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match Transaction::get_by_id(&state.pool, &id).await {
-        Ok(Some(tx)) => {
-            (StatusCode::OK, Json(serde_json::json!({ "transaction": tx })))
-        }
+        Ok(Some(tx)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "transaction": tx })),
+        ),
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "transaction not found" })),
@@ -89,11 +90,13 @@ pub async fn create_transaction(
     .await
     {
         Ok(tx) => {
-            crate::websocket::broadcast_event(crate::websocket::DashboardEvent::PurchaseInitiated {
-                tx_id: tx.id.clone(),
-                service_name: req.service_id.clone(),
-                buyer_id: req.buyer_id.clone(),
-            });
+            crate::websocket::broadcast_event(
+                crate::websocket::DashboardEvent::PurchaseInitiated {
+                    tx_id: tx.id.clone(),
+                    service_name: req.service_id.clone(),
+                    buyer_id: req.buyer_id.clone(),
+                },
+            );
             (
                 StatusCode::CREATED,
                 Json(serde_json::json!({ "transaction": tx })),
@@ -121,8 +124,14 @@ pub async fn release_escrow(
 
             // Real Stripe Connect transfer: move funds from platform to seller
             let stripe_secret = std::env::var("STRIPE_SECRET_KEY").ok();
-            if let (Some(secret), Some(_stripe_session_id)) = (stripe_secret, &tx.stripe_session_id) {
-                let seller = match crate::models::agent::Agent::get_by_id(&state.pool, &tx.seller_id).await {
+            if let (Some(secret), Some(_stripe_session_id)) = (stripe_secret, &tx.stripe_session_id)
+            {
+                let seller = match crate::models::agent::Agent::get_by_id(
+                    &state.pool,
+                    &tx.seller_id,
+                )
+                .await
+                {
                     Ok(Some(a)) => a,
                     _ => {
                         return (
@@ -153,7 +162,12 @@ pub async fn release_escrow(
                         Ok(res) => {
                             if let Ok(data) = res.json::<serde_json::Value>().await {
                                 if let Some(transfer_id) = data["id"].as_str() {
-                                    let _ = Transaction::update_stripe_transfer(&state.pool, &id, transfer_id).await;
+                                    let _ = Transaction::update_stripe_transfer(
+                                        &state.pool,
+                                        &id,
+                                        transfer_id,
+                                    )
+                                    .await;
                                 }
                             }
                         }

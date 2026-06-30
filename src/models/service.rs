@@ -58,11 +58,10 @@ impl Service {
     }
 
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Self>> {
-        let services = sqlx::query_as::<_, Service>(
-            "SELECT * FROM services ORDER BY created_at DESC",
-        )
-        .fetch_all(pool)
-        .await?;
+        let services =
+            sqlx::query_as::<_, Service>("SELECT * FROM services ORDER BY created_at DESC")
+                .fetch_all(pool)
+                .await?;
         Ok(services)
     }
 
@@ -112,7 +111,10 @@ impl Service {
         .bind(max_ticks)
         .fetch_all(pool)
         .await?;
-        
-        Ok(rows.into_iter().map(|(id, name)| format!("{} ({})", name, id)).collect())
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, name)| format!("{} ({})", name, id))
+            .collect())
     }
 }

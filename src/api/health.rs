@@ -1,12 +1,7 @@
 //! Health check endpoint — returns system status for monitoring and judge demos
 
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-};
-use serde::{Deserialize, Serialize};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use serde::Serialize;
 use std::sync::Arc;
 
 use crate::AppState;
@@ -23,9 +18,7 @@ pub struct HealthResponse {
     pub uptime_seconds: u64,
 }
 
-pub async fn health_check(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let start = std::time::Instant::now();
 
     // Check database
@@ -43,7 +36,10 @@ pub async fn health_check(
     // Check Stripe
     let stripe_status = match std::env::var("STRIPE_SECRET_KEY") {
         Ok(_) => ("configured", "Live payments enabled".to_string()),
-        Err(_) => ("demo_mode", "STRIPE_SECRET_KEY not set — running in demo mode".to_string()),
+        Err(_) => (
+            "demo_mode",
+            "STRIPE_SECRET_KEY not set — running in demo mode".to_string(),
+        ),
     };
 
     let overall = if db_status == "connected" {
@@ -74,15 +70,15 @@ pub async fn health_check(
 
 async fn check_llm_local() -> Result<String, reqwest::Error> {
     let client = reqwest::Client::new();
-    let url = std::env::var("LLM_LOCAL_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
-    
+    let url =
+        std::env::var("LLM_LOCAL_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+
     let res = client
         .get(format!("{}/v1/models", url))
         .timeout(std::time::Duration::from_secs(2))
         .send()
         .await?;
-    
+
     if res.status().is_success() {
         let body = res.text().await?;
         Ok(format!("llama-swap reachable — models: {}", body.len()))

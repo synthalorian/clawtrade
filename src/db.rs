@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
-use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::SqlitePool;
 use std::path::Path;
 
 const SCHEMA: &str = r#"
@@ -115,16 +115,18 @@ pub async fn init_db(db_path: &Path) -> Result<SqlitePool> {
     let _ = sqlx::query("ALTER TABLE services ADD COLUMN sales_count INTEGER NOT NULL DEFAULT 0")
         .execute(&pool)
         .await;
-    let _ = sqlx::query("ALTER TABLE services ADD COLUMN ticks_since_last_sale INTEGER NOT NULL DEFAULT 0")
-        .execute(&pool)
-        .await;
+    let _ = sqlx::query(
+        "ALTER TABLE services ADD COLUMN ticks_since_last_sale INTEGER NOT NULL DEFAULT 0",
+    )
+    .execute(&pool)
+    .await;
 
     // Migration: add balance_cents to agents
-    let _ = sqlx::query("ALTER TABLE agents ADD COLUMN balance_cents INTEGER NOT NULL DEFAULT 10000")
-        .execute(&pool)
-        .await;
+    let _ =
+        sqlx::query("ALTER TABLE agents ADD COLUMN balance_cents INTEGER NOT NULL DEFAULT 10000")
+            .execute(&pool)
+            .await;
 
-    seed_agents(&pool).await?;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agents")
         .fetch_one(&pool)
         .await?;
@@ -142,7 +144,10 @@ const AGENT_NAME_POOL: &[(&str, &str)] = &[
     ("Grid Runner", "Data processing and formatting specialist"),
     ("Synth Coder", "Code review and API monitoring expert"),
     ("Data Weaver", "Business intelligence and analytics agent"),
-    ("Claw Merchant", "Marketplace trading and arbitrage specialist"),
+    (
+        "Claw Merchant",
+        "Marketplace trading and arbitrage specialist",
+    ),
     ("Byte Bard", "Documentation and technical writing"),
     ("Logic Lord", "Formal verification and proof assistant"),
     ("Code Poet", "Elegant algorithm design and optimization"),
@@ -160,7 +165,11 @@ async fn seed_agents(pool: &SqlitePool) -> Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
         // Deterministic suffix if we ever need more than 16
-        let unique_name = if i < 16 { name.to_string() } else { format!("{} {}", name, i - 15) };
+        let unique_name = if i < 16 {
+            name.to_string()
+        } else {
+            format!("{} {}", name, i - 15)
+        };
         sqlx::query(
             "INSERT INTO agents (id, name, description, reputation_score, total_sales, total_revenue_cents, stripe_account_id, created_at)
              VALUES (?, ?, ?, 0, 0, 0, NULL, ?)",
@@ -183,12 +192,30 @@ async fn seed_agents(pool: &SqlitePool) -> Result<()> {
 pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
     // Seed 6 agents with distinct personalities
     let agents = vec![
-        ("Neon Trader", "Aggressive merchant — undercuts by 30%, high volume seller"),
-        ("Quality Cortex", "Quality focused — premium pricing, only tier 2-3 services"),
-        ("Rust Ranger", "Niche specialist — only creates code_review services"),
-        ("Deal Diver", "Bargain hunter — only buys, never sells, waits for deals"),
-        ("Rep Builder", "Reputation grinder — focuses on reviews, generous reviewer"),
-        ("Flex Flow", "Vanilla agent — shows default behavior, no personality modifier"),
+        (
+            "Neon Trader",
+            "Aggressive merchant — undercuts by 30%, high volume seller",
+        ),
+        (
+            "Quality Cortex",
+            "Quality focused — premium pricing, only tier 2-3 services",
+        ),
+        (
+            "Rust Ranger",
+            "Niche specialist — only creates code_review services",
+        ),
+        (
+            "Deal Diver",
+            "Bargain hunter — only buys, never sells, waits for deals",
+        ),
+        (
+            "Rep Builder",
+            "Reputation grinder — focuses on reviews, generous reviewer",
+        ),
+        (
+            "Flex Flow",
+            "Vanilla agent — shows default behavior, no personality modifier",
+        ),
     ];
 
     let mut agent_ids = vec![];
@@ -208,24 +235,11 @@ pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
         agent_ids.push(id);
     }
 
-    // Seed 8 services from the catalog (mix of tiers)
-    // INTENTIONALLY: 0 code_review services to create a market gap for Rust Ranger
-    let demo_services = vec![
-        ("git_commit_msg", "Git Commit Msg", "Generate conventional commit messages from diffs"),
-        ("code_lint_fix", "Code Lint Fix", "Auto-fix clippy warnings, format Rust/JS/Python"),
-        ("regex_generator", "Regex Generator", "Generate regex patterns from descriptions"),
-        ("diff_explainer", "Diff Explainer", "Explain what a PR actually changes"),
-        ("log_analyzer", "Log Analyzer", "Feed logs, get the key errors and patterns"),
-        // NOTE: code_review deliberately omitted — market gap for Rust Ranger
-        ("codebase_qa", "Codebase Q&A", "Upload code, ask where the auth logic is"),
-        ("book_summary_qa", "Book Summary + Q&A", "Upload entire novel, ask detailed questions"),
-    ];
-
-    for (i, (svc_type, name, desc)) in demo_services.iter().enumerate() {
+    // Seed the full service catalog so the marketplace has 30+ distinct services.
+    // Each service type gets one canonical listing owned by a demo agent.
+    let catalog = crate::service_catalog::SERVICE_CATALOG;
+    for (i, def) in catalog.iter().enumerate() {
         let agent_id = &agent_ids[i % agent_ids.len()];
-        let def = crate::service_catalog::get_service_definition(svc_type).unwrap();
-        let price = def.base_price_cents;
-
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
         sqlx::query(
@@ -234,15 +248,19 @@ pub async fn seed_demo_data(pool: &SqlitePool) -> Result<()> {
         )
         .bind(&id)
         .bind(agent_id)
-        .bind(name)
-        .bind(desc)
-        .bind(price)
-        .bind(svc_type)
+        .bind(&def.name)
+        .bind(&def.description)
+        .bind(def.base_price_cents)
+        .bind(def.service_type)
         .bind(now)
         .execute(pool)
         .await?;
     }
 
-    eprintln!("[clawtrade] Seeded {} agents and {} services", agents.len(), demo_services.len());
+    eprintln!(
+        "[clawtrade] Seeded {} agents and {} services",
+        agents.len(),
+        catalog.len()
+    );
     Ok(())
 }
