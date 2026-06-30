@@ -4,8 +4,8 @@
 //! Fallback: NVIDIA API (if NVIDIA_API_KEY is set and local fails)
 //!
 //! The architecture is local-first: all service delivery runs on local models
-//! (Qwen 3.5 9B, Qwen 3.6 35B, Gemma 4 12B/26B, Phi-4 Reasoning+).
-//! NVIDIA is only used as a fallback when local inference is unavailable.
+//! (Qwen, Gemma). NVIDIA is only used as a fallback when local inference is
+//! unavailable.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
