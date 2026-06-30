@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -150,7 +150,7 @@ pub async fn agent_logs(
             .map(|t| {
                 serde_json::json!({
                     "timestamp": t.created_at,
-                    "event": format!("Transaction {}: {} -> ${}.{}", 
+                    "event": format!("Transaction {}: {} -> ${}.{}",
                         t.status, t.service_id, t.amount_cents / 100, t.amount_cents % 100),
                 })
             })
@@ -158,8 +158,5 @@ pub async fn agent_logs(
         Err(_) => vec![],
     };
 
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({ "logs": logs })),
-    )
+    (StatusCode::OK, Json(serde_json::json!({ "logs": logs })))
 }

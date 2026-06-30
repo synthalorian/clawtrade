@@ -61,36 +61,32 @@ impl Review {
     }
 
     pub async fn get_average_rating(pool: &SqlitePool, agent_id: &str) -> Result<Option<f64>> {
-        let result: Option<(f64,)> = sqlx::query_as(
-            "SELECT AVG(CAST(rating AS REAL)) FROM reviews WHERE agent_id = ?",
-        )
-        .bind(agent_id)
-        .fetch_optional(pool)
-        .await?;
+        let result: Option<(f64,)> =
+            sqlx::query_as("SELECT AVG(CAST(rating AS REAL)) FROM reviews WHERE agent_id = ?")
+                .bind(agent_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(result.map(|r| r.0))
     }
 
     async fn update_agent_rating(pool: &SqlitePool, agent_id: &str) -> Result<()> {
         if let Some(avg) = Self::get_average_rating(pool, agent_id).await? {
             let score = (avg * 20.0) as i64; // Convert 5-star to 0-100 reputation_score
-            sqlx::query(
-                "UPDATE agents SET reputation_score = ? WHERE id = ?",
-            )
-            .bind(score)
-            .bind(agent_id)
-            .execute(pool)
-            .await?;
+            sqlx::query("UPDATE agents SET reputation_score = ? WHERE id = ?")
+                .bind(score)
+                .bind(agent_id)
+                .execute(pool)
+                .await?;
         }
         Ok(())
     }
 
     pub async fn count_by_agent(pool: &SqlitePool, agent_id: &str) -> Result<i64> {
-        let result: Option<(i64,)> = sqlx::query_as(
-            "SELECT COUNT(*) FROM reviews WHERE agent_id = ?",
-        )
-        .bind(agent_id)
-        .fetch_optional(pool)
-        .await?;
+        let result: Option<(i64,)> =
+            sqlx::query_as("SELECT COUNT(*) FROM reviews WHERE agent_id = ?")
+                .bind(agent_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(result.map(|r| r.0).unwrap_or(0))
     }
 }

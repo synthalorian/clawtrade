@@ -88,7 +88,11 @@ impl ActivityLog {
         Ok(logs)
     }
 
-    pub async fn list_by_target(pool: &SqlitePool, target_id: &str, limit: i64) -> Result<Vec<Self>> {
+    pub async fn list_by_target(
+        pool: &SqlitePool,
+        target_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Self>> {
         let logs = sqlx::query_as::<_, ActivityLog>(
             "SELECT * FROM activity_logs WHERE target_id = ? ORDER BY created_at DESC LIMIT ?",
         )
@@ -104,17 +108,15 @@ impl ActivityLog {
             .fetch_one(pool)
             .await?;
 
-        let total_purchases: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM activity_logs WHERE action_type = 'purchase'",
-        )
-        .fetch_one(pool)
-        .await?;
+        let total_purchases: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM activity_logs WHERE action_type = 'purchase'")
+                .fetch_one(pool)
+                .await?;
 
-        let total_reviews: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM activity_logs WHERE action_type = 'review'",
-        )
-        .fetch_one(pool)
-        .await?;
+        let total_reviews: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM activity_logs WHERE action_type = 'review'")
+                .fetch_one(pool)
+                .await?;
 
         let total_services_created: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM activity_logs WHERE action_type = 'create_service'",

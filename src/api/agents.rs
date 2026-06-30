@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -30,7 +30,10 @@ pub struct CreateAgentRequest {
 
 pub async fn list_agents(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match Agent::list(&state.pool).await {
-        Ok(agents) => (StatusCode::OK, Json(serde_json::json!({ "agents": agents }))),
+        Ok(agents) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "agents": agents })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
@@ -43,9 +46,7 @@ pub async fn get_agent(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match Agent::get_by_id(&state.pool, &id).await {
-        Ok(Some(agent)) => {
-            (StatusCode::OK, Json(serde_json::json!({ "agent": agent })))
-        }
+        Ok(Some(agent)) => (StatusCode::OK, Json(serde_json::json!({ "agent": agent }))),
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "agent not found" })),
@@ -69,9 +70,10 @@ pub async fn create_agent(
     }
 
     match Agent::create(&state.pool, &req.name, &req.description).await {
-        Ok(agent) => {
-            (StatusCode::CREATED, Json(serde_json::json!({ "agent": agent })))
-        }
+        Ok(agent) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({ "agent": agent })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),

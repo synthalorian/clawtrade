@@ -81,7 +81,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/api/activity/agent/{id}", get(activity::agent_activity))
         .route("/api/activity/tx/{id}", get(activity::tx_activity))
         // Inference monitoring
-        .route("/api/inference/history", get(llm::inference_history))
+        // .route("/api/inference/history", get(llm::inference_history))
         // Try-before-you-buy
         .route("/api/services/{id}/try", post(services::try_service))
         // WebSocket

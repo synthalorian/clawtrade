@@ -60,7 +60,12 @@ pub async fn tx_activity(
     match ActivityLog::list_by_target(&state.pool, &tx_id, 10).await {
         Ok(logs) => {
             // Also fetch the deliverable for this transaction
-            let deliverable = match crate::models::deliverable::Deliverable::get_by_transaction(&state.pool, &tx_id).await {
+            let deliverable = match crate::models::deliverable::Deliverable::get_by_transaction(
+                &state.pool,
+                &tx_id,
+            )
+            .await
+            {
                 Ok(d) => d,
                 Err(_) => None,
             };
@@ -87,10 +92,7 @@ pub async fn activity_stats(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     match ActivityLog::get_stats(&state.pool).await {
-        Ok(stats) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "stats": stats })),
-        ),
+        Ok(stats) => (StatusCode::OK, Json(serde_json::json!({ "stats": stats }))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),

@@ -56,6 +56,7 @@ impl ServiceTier {
 
 /// Model assignment for service delivery — explicit context variants
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(non_camel_case_types)]
 pub enum ModelAssignment {
     Qwen9B_131k,      // Fast, cheap — micro tasks
     Qwen9B_262k,      // Fast, longer context
@@ -805,7 +806,9 @@ pub const SERVICE_CATALOG: &[ServiceDefinition] = &[
 
 /// Lookup a service definition by type
 pub fn get_service_definition(service_type: &str) -> Option<&'static ServiceDefinition> {
-    SERVICE_CATALOG.iter().find(|s| s.service_type == service_type)
+    SERVICE_CATALOG
+        .iter()
+        .find(|s| s.service_type == service_type)
 }
 
 /// Get all service types for a given tier

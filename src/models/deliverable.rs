@@ -52,11 +52,7 @@ impl Deliverable {
         })
     }
 
-    pub async fn update_output(
-        pool: &SqlitePool,
-        id: &str,
-        output_data: &str,
-    ) -> Result<()> {
+    pub async fn update_output(pool: &SqlitePool, id: &str, output_data: &str) -> Result<()> {
         sqlx::query(
             "UPDATE deliverables SET output_data = ?, status = 'completed', updated_at = ? WHERE id = ?",
         )
@@ -68,11 +64,7 @@ impl Deliverable {
         Ok(())
     }
 
-    pub async fn mark_failed(
-        pool: &SqlitePool,
-        id: &str,
-        error: &str,
-    ) -> Result<()> {
+    pub async fn mark_failed(pool: &SqlitePool, id: &str, error: &str) -> Result<()> {
         sqlx::query(
             "UPDATE deliverables SET status = 'failed', error_message = ?, updated_at = ? WHERE id = ?",
         )
@@ -84,23 +76,24 @@ impl Deliverable {
         Ok(())
     }
 
-    pub async fn get_by_transaction(pool: &SqlitePool, transaction_id: &str) -> Result<Option<Self>> {
-        let d = sqlx::query_as::<_, Deliverable>(
-            "SELECT * FROM deliverables WHERE transaction_id = ?",
-        )
-        .bind(transaction_id)
-        .fetch_optional(pool)
-        .await?;
+    pub async fn get_by_transaction(
+        pool: &SqlitePool,
+        transaction_id: &str,
+    ) -> Result<Option<Self>> {
+        let d =
+            sqlx::query_as::<_, Deliverable>("SELECT * FROM deliverables WHERE transaction_id = ?")
+                .bind(transaction_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(d)
     }
 
     #[allow(dead_code)]
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Self>> {
-        let ds = sqlx::query_as::<_, Deliverable>(
-            "SELECT * FROM deliverables ORDER BY created_at DESC",
-        )
-        .fetch_all(pool)
-        .await?;
+        let ds =
+            sqlx::query_as::<_, Deliverable>("SELECT * FROM deliverables ORDER BY created_at DESC")
+                .fetch_all(pool)
+                .await?;
         Ok(ds)
     }
 }

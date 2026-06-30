@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -51,7 +51,14 @@ pub async fn execute_service(
     };
 
     // Execute the service with user input
-    let result = match crate::delivery::execute_service_direct(&state.pool, &state.llm, &service_id, &req.user_input).await {
+    let result = match crate::delivery::execute_service_direct(
+        &state.pool,
+        &state.llm,
+        &service_id,
+        &req.user_input,
+    )
+    .await
+    {
         Ok(output) => output,
         Err(e) => {
             return (
@@ -62,18 +69,24 @@ pub async fn execute_service(
     };
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
-    let powered_by = if let Some(def) = crate::service_catalog::get_service_definition(&service.service_type) {
-        format!("{} ({}, {})", def.model.model_name(), def.model.context_size(), match def.tier {
-            crate::service_catalog::ServiceTier::MicroTask => "Micro-Task",
-            crate::service_catalog::ServiceTier::RealWork => "Real Work",
-            crate::service_catalog::ServiceTier::HeavyLifting => "Heavy Lifting",
-            crate::service_catalog::ServiceTier::LocalOnly => "Local-Only",
-        })
-    } else if std::env::var("NVIDIA_API_KEY").is_ok() {
-        "NVIDIA Nemotron 3 Ultra".to_string()
-    } else {
-        "Local LLM (Qwen3.5-9B via llama-swap)".to_string()
-    };
+    let powered_by =
+        if let Some(def) = crate::service_catalog::get_service_definition(&service.service_type) {
+            format!(
+                "{} ({}, {})",
+                def.model.model_name(),
+                def.model.context_size(),
+                match def.tier {
+                    crate::service_catalog::ServiceTier::MicroTask => "Micro-Task",
+                    crate::service_catalog::ServiceTier::RealWork => "Real Work",
+                    crate::service_catalog::ServiceTier::HeavyLifting => "Heavy Lifting",
+                    crate::service_catalog::ServiceTier::LocalOnly => "Local-Only",
+                }
+            )
+        } else if std::env::var("NVIDIA_API_KEY").is_ok() {
+            "NVIDIA Nemotron 3 Ultra".to_string()
+        } else {
+            "Local LLM (Qwen3.5-9B via llama-swap)".to_string()
+        };
 
     (
         StatusCode::OK,
@@ -93,9 +106,10 @@ pub async fn get_deliverable(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match Deliverable::get_by_transaction(&state.pool, &id).await {
-        Ok(Some(d)) => {
-            (StatusCode::OK, Json(serde_json::json!({ "deliverable": d })))
-        }
+        Ok(Some(d)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "deliverable": d })),
+        ),
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "deliverable not found" })),

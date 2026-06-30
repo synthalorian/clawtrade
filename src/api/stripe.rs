@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -124,13 +124,15 @@ pub async fn demo_purchase(
     };
 
     // Simulate payment → escrow
-    let _ = sqlx::query(
-        "UPDATE transactions SET status = 'escrow', updated_at = ? WHERE id = ?",
-    )
-    .bind(Utc::now())
-    .bind(&tx.id)
-    .execute(&state.pool)
-    .await;
+    let _ = sqlx::query("UPDATE transactions SET status = 'escrow', updated_at = ? WHERE id = ?")
+        .bind(Utc::now())
+        .bind(&tx.id)
+        .execute(&state.pool)
+        .await;
+
+    // Deduct from buyer and credit seller
+    let _ = Agent::deduct_balance(&state.pool, &req.buyer_id, service.price_cents).await;
+    let _ = Agent::add_revenue(&state.pool, &service.agent_id, service.price_cents).await;
 
     // Increment seller stats
     let _ = Agent::increment_sales(&state.pool, &service.agent_id, service.price_cents).await;
@@ -221,7 +223,9 @@ pub async fn create_checkout(
         None => {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({"error": "STRIPE_SECRET_KEY not configured", "demo_mode": true})),
+                Json(
+                    serde_json::json!({"error": "STRIPE_SECRET_KEY not configured", "demo_mode": true}),
+                ),
             )
         }
     };
@@ -301,7 +305,8 @@ pub async fn create_checkout(
 
     if let Some(url) = stripe_data["url"].as_str() {
         let session_id = stripe_data["id"].as_str().unwrap_or("").to_string();
-        if let Err(_e) = Transaction::update_stripe_session(&state.pool, &tx.id, &session_id).await {
+        if let Err(_e) = Transaction::update_stripe_session(&state.pool, &tx.id, &session_id).await
+        {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": _e.to_string()})),
@@ -364,7 +369,8 @@ pub async fn stripe_webhook(
 
                 if let Some(ref tx) = tx {
                     // Mark as paid (escrow)
-                    let update_result = Transaction::mark_paid_by_stripe_session(&state.pool, session_id).await;
+                    let update_result =
+                        Transaction::mark_paid_by_stripe_session(&state.pool, session_id).await;
                     if update_result.is_err() || tx.stripe_session_id.is_none() {
                         // Fallback: update directly by tx id (demo mode — no real stripe session)
                         let _ = sqlx::query(
@@ -376,7 +382,12 @@ pub async fn stripe_webhook(
                         .await;
 
                         // Increment seller stats
-                        let _ = crate::models::agent::Agent::increment_sales(&state.pool, &tx.seller_id, tx.amount_cents).await;
+                        let _ = crate::models::agent::Agent::increment_sales(
+                            &state.pool,
+                            &tx.seller_id,
+                            tx.amount_cents,
+                        )
+                        .await;
                     }
 
                     // Trigger service delivery
@@ -385,11 +396,13 @@ pub async fn stripe_webhook(
                     }
 
                     // Broadcast payment confirmation
-                    crate::websocket::broadcast_event(crate::websocket::DashboardEvent::PaymentConfirmed {
-                        tx_id: tx.id.clone(),
-                        service_name: tx.service_id.clone(),
-                        amount_cents: tx.amount_cents,
-                    });
+                    crate::websocket::broadcast_event(
+                        crate::websocket::DashboardEvent::PaymentConfirmed {
+                            tx_id: tx.id.clone(),
+                            service_name: tx.service_id.clone(),
+                            amount_cents: tx.amount_cents,
+                        },
+                    );
                 }
             }
         }
@@ -542,7 +555,9 @@ pub async fn create_connect_account(
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("stripe account creation failed: {}", e)})),
+                Json(
+                    serde_json::json!({"error": format!("stripe account creation failed: {}", e)}),
+                ),
             )
         }
     };
@@ -668,10 +683,7 @@ pub async fn create_account_link(
     };
 
     if let Some(url) = data["url"].as_str() {
-        (
-            StatusCode::OK,
-            Json(serde_json::json!({"url": url})),
-        )
+        (StatusCode::OK, Json(serde_json::json!({"url": url})))
     } else {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

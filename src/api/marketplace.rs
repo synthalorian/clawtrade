@@ -5,13 +5,8 @@
 //! - GET /api/marketplace/leaderboard — top earning agents, most popular services
 //! - GET /api/marketplace/gaps — underserved categories
 
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-};
-use serde::{Deserialize, Serialize};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use serde::Serialize;
 use std::sync::Arc;
 
 use crate::AppState;
@@ -70,9 +65,7 @@ pub struct GapsResponse {
     pub covered_categories: i64,
 }
 
-pub async fn marketplace_stats(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn marketplace_stats(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let total_agents: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agents")
         .fetch_one(&state.pool)
         .await
@@ -83,10 +76,11 @@ pub async fn marketplace_stats(
         .await
         .unwrap_or(0);
 
-    let active_services: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM services WHERE status = 'active'")
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
+    let active_services: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM services WHERE status = 'active'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
     let total_transactions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions")
         .fetch_one(&state.pool)
@@ -101,7 +95,7 @@ pub async fn marketplace_stats(
     .unwrap_or(0);
 
     let avg_price: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(AVG(price_cents), 0) FROM services WHERE status = 'active'"
+        "SELECT COALESCE(AVG(price_cents), 0) FROM services WHERE status = 'active'",
     )
     .fetch_one(&state.pool)
     .await
@@ -131,15 +125,13 @@ pub async fn marketplace_stats(
     )
 }
 
-pub async fn leaderboard(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn leaderboard(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Top earning agents
     let top_agents: Vec<(String, String, i64, i64, i64)> = sqlx::query_as(
         "SELECT id, name, total_revenue_cents, total_sales, reputation_score 
          FROM agents 
          ORDER BY total_revenue_cents DESC, reputation_score DESC 
-         LIMIT 10"
+         LIMIT 10",
     )
     .fetch_all(&state.pool)
     .await
@@ -148,16 +140,18 @@ pub async fn leaderboard(
     let agent_entries: Vec<LeaderboardEntry> = top_agents
         .into_iter()
         .enumerate()
-        .map(|(i, (agent_id, agent_name, total_revenue_cents, total_sales, reputation_score))| {
-            LeaderboardEntry {
-                rank: (i + 1) as i32,
-                agent_name,
-                agent_id,
-                total_revenue_cents,
-                total_sales,
-                reputation_score,
-            }
-        })
+        .map(
+            |(i, (agent_id, agent_name, total_revenue_cents, total_sales, reputation_score))| {
+                LeaderboardEntry {
+                    rank: (i + 1) as i32,
+                    agent_name,
+                    agent_id,
+                    total_revenue_cents,
+                    total_sales,
+                    reputation_score,
+                }
+            },
+        )
         .collect();
 
     // Most popular services
@@ -167,7 +161,7 @@ pub async fn leaderboard(
          JOIN agents a ON s.agent_id = a.id
          WHERE s.status = 'active'
          ORDER BY s.sales_count DESC, s.created_at DESC
-         LIMIT 10"
+         LIMIT 10",
     )
     .fetch_all(&state.pool)
     .await
@@ -176,17 +170,22 @@ pub async fn leaderboard(
     let service_entries: Vec<ServiceLeaderboardEntry> = top_services
         .into_iter()
         .enumerate()
-        .map(|(i, (service_id, service_name, agent_name, sales_count, price_cents, service_type))| {
-            ServiceLeaderboardEntry {
-                rank: (i + 1) as i32,
-                service_name,
-                service_id,
-                agent_name,
-                sales_count,
-                price_cents,
-                service_type,
-            }
-        })
+        .map(
+            |(
+                i,
+                (service_id, service_name, agent_name, sales_count, price_cents, service_type),
+            )| {
+                ServiceLeaderboardEntry {
+                    rank: (i + 1) as i32,
+                    service_name,
+                    service_id,
+                    agent_name,
+                    sales_count,
+                    price_cents,
+                    service_type,
+                }
+            },
+        )
         .collect();
 
     (
@@ -198,9 +197,7 @@ pub async fn leaderboard(
     )
 }
 
-pub async fn marketplace_gaps(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn marketplace_gaps(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Get current service counts by type
     let existing_counts: Vec<(String, i64)> = sqlx::query_as(
         "SELECT service_type, COUNT(*) as cnt FROM services WHERE status = 'active' GROUP BY service_type"
@@ -243,7 +240,11 @@ pub async fn marketplace_gaps(
     }
 
     // Sort by opportunity score descending
-    gaps.sort_by(|a, b| b.opportunity_score.partial_cmp(&a.opportunity_score).unwrap());
+    gaps.sort_by(|a, b| {
+        b.opportunity_score
+            .partial_cmp(&a.opportunity_score)
+            .unwrap()
+    });
 
     // Only return top 15 gaps
     gaps.truncate(15);

@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -34,7 +34,9 @@ fn built_in_templates() -> Vec<AgentTemplate> {
         AgentTemplate {
             id: "template_text_pro".to_string(),
             name: "Text Processing Pro".to_string(),
-            description: "Summarization, sentiment analysis, keyword extraction. Ready to monetize.".to_string(),
+            description:
+                "Summarization, sentiment analysis, keyword extraction. Ready to monetize."
+                    .to_string(),
             default_services: vec![
                 TemplateService {
                     name: "Text Summarizer".to_string(),
@@ -60,7 +62,8 @@ fn built_in_templates() -> Vec<AgentTemplate> {
         AgentTemplate {
             id: "template_data_hunter".to_string(),
             name: "Data Hunter".to_string(),
-            description: "JSON formatting, CSV conversion, API monitoring. For data engineers.".to_string(),
+            description: "JSON formatting, CSV conversion, API monitoring. For data engineers."
+                .to_string(),
             default_services: vec![
                 TemplateService {
                     name: "JSON Beautifier".to_string(),
@@ -115,7 +118,10 @@ fn built_in_templates() -> Vec<AgentTemplate> {
 /// GET /api/v1/templates — list all available templates
 pub async fn list_templates() -> impl IntoResponse {
     let templates = built_in_templates();
-    (StatusCode::OK, Json(serde_json::json!({ "templates": templates })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "templates": templates })),
+    )
 }
 
 /// GET /api/v1/templates/{id} — get single template details
@@ -123,7 +129,10 @@ pub async fn get_template(Path(id): Path<String>) -> impl IntoResponse {
     let templates = built_in_templates();
     match templates.into_iter().find(|t| t.id == id) {
         Some(t) => (StatusCode::OK, Json(serde_json::json!({ "template": t }))),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "template not found"}))),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "template not found"})),
+        ),
     }
 }
 
@@ -144,7 +153,10 @@ pub async fn deploy_template(
     let template = match templates.into_iter().find(|t| t.id == id) {
         Some(t) => t,
         None => {
-            return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "template not found"})));
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "template not found"})),
+            );
         }
     };
 
@@ -161,14 +173,13 @@ pub async fn deploy_template(
     }
 
     // Create agent from template
-    let agent = match Agent::create(
-        &state.pool,
-        &template.name,
-        &template.description,
-    ).await {
+    let agent = match Agent::create(&state.pool, &template.name, &template.description).await {
         Ok(a) => a,
         Err(e) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})));
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            );
         }
     };
 
@@ -182,10 +193,15 @@ pub async fn deploy_template(
             svc.price_cents,
             &agent.id,
             &svc.service_type,
-        ).await {
+        )
+        .await
+        {
             Ok(s) => services.push(s),
             Err(e) => {
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})));
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                );
             }
         }
     }

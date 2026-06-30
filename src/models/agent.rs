@@ -46,11 +46,9 @@ impl Agent {
     }
 
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Self>> {
-        let agents = sqlx::query_as::<_, Agent>(
-            "SELECT * FROM agents ORDER BY created_at DESC",
-        )
-        .fetch_all(pool)
-        .await?;
+        let agents = sqlx::query_as::<_, Agent>("SELECT * FROM agents ORDER BY created_at DESC")
+            .fetch_all(pool)
+            .await?;
         // Deduplicate by name — keep the one with highest balance
         // Filter out auto-generated agents (ClawMerchant-*, DataHunter-*)
         let mut unique: std::collections::HashMap<String, Agent> = std::collections::HashMap::new();
@@ -58,8 +56,13 @@ impl Agent {
             if a.name.starts_with("ClawMerchant-") || a.name.starts_with("DataHunter-") {
                 continue;
             }
-            unique.entry(a.name.clone())
-                .and_modify(|existing| { if a.balance_cents > existing.balance_cents { *existing = a.clone(); } })
+            unique
+                .entry(a.name.clone())
+                .and_modify(|existing| {
+                    if a.balance_cents > existing.balance_cents {
+                        *existing = a.clone();
+                    }
+                })
                 .or_insert(a);
         }
         let mut agents: Vec<Agent> = unique.into_values().collect();
@@ -95,14 +98,16 @@ impl Agent {
         Ok(())
     }
 
-    pub async fn update_stripe_account(pool: &SqlitePool, id: &str, stripe_account_id: &str) -> Result<()> {
-        sqlx::query(
-            "UPDATE agents SET stripe_account_id = ? WHERE id = ?",
-        )
-        .bind(stripe_account_id)
-        .bind(id)
-        .execute(pool)
-        .await?;
+    pub async fn update_stripe_account(
+        pool: &SqlitePool,
+        id: &str,
+        stripe_account_id: &str,
+    ) -> Result<()> {
+        sqlx::query("UPDATE agents SET stripe_account_id = ? WHERE id = ?")
+            .bind(stripe_account_id)
+            .bind(id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -174,7 +179,7 @@ mod tests {
         let pool = SqlitePool::connect("sqlite::memory:")
             .await
             .expect("Failed to create test DB");
-        
+
         sqlx::query(
             r#"
             CREATE TABLE agents (
@@ -188,20 +193,22 @@ mod tests {
                 stripe_account_id TEXT,
                 created_at TEXT NOT NULL
             )
-            "#
+            "#,
         )
         .execute(&pool)
         .await
         .unwrap();
-        
+
         pool
     }
 
     #[tokio::test]
     async fn test_agent_create() {
         let pool = setup_test_db().await;
-        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
-        
+        let agent = Agent::create(&pool, "Test Agent", "A test agent")
+            .await
+            .unwrap();
+
         assert_eq!(agent.name, "Test Agent");
         assert_eq!(agent.description, "A test agent");
         assert_eq!(agent.balance_cents, 10000);
@@ -211,8 +218,10 @@ mod tests {
     #[tokio::test]
     async fn test_agent_get_by_id() {
         let pool = setup_test_db().await;
-        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
-        
+        let agent = Agent::create(&pool, "Test Agent", "A test agent")
+            .await
+            .unwrap();
+
         let fetched = Agent::get_by_id(&pool, &agent.id).await.unwrap();
         assert!(fetched.is_some());
         assert_eq!(fetched.unwrap().name, "Test Agent");
@@ -221,13 +230,15 @@ mod tests {
     #[tokio::test]
     async fn test_agent_balance_update() {
         let pool = setup_test_db().await;
-        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
-        
+        let agent = Agent::create(&pool, "Test Agent", "A test agent")
+            .await
+            .unwrap();
+
         // Deduct balance
         Agent::deduct_balance(&pool, &agent.id, 500).await.unwrap();
         let updated = Agent::get_by_id(&pool, &agent.id).await.unwrap().unwrap();
         assert_eq!(updated.balance_cents, 9500);
-        
+
         // Add revenue
         Agent::add_revenue(&pool, &agent.id, 200).await.unwrap();
         let updated = Agent::get_by_id(&pool, &agent.id).await.unwrap().unwrap();
@@ -238,10 +249,14 @@ mod tests {
     #[tokio::test]
     async fn test_agent_deduct_balance_insufficient() {
         let pool = setup_test_db().await;
-        let agent = Agent::create(&pool, "Test Agent", "A test agent").await.unwrap();
-        
+        let agent = Agent::create(&pool, "Test Agent", "A test agent")
+            .await
+            .unwrap();
+
         // Try to deduct more than balance — should silently fail (no rows updated)
-        Agent::deduct_balance(&pool, &agent.id, 20000).await.unwrap();
+        Agent::deduct_balance(&pool, &agent.id, 20000)
+            .await
+            .unwrap();
         let updated = Agent::get_by_id(&pool, &agent.id).await.unwrap().unwrap();
         assert_eq!(updated.balance_cents, 10000); // unchanged
     }
