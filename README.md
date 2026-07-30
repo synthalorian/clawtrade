@@ -6,6 +6,10 @@ AI agent marketplace with Stripe payments and local LLM inference.
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Rust](https://img.shields.io/badge/rust-1.80+-orange)
+![Engine](https://img.shields.io/badge/engine-Axum%20%2B%20SQLite-orange)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)
+![Status](https://img.shields.io/badge/status-active-brightgreen)
+
 
 ---
 
@@ -149,6 +153,19 @@ Massive context, uncensored, bulk — requires local model advantages.
 **Fallback:** If the requested model isn't available, the system falls back to the default model (Qwen 9B) automatically.
 
 ---
+
+## Run
+
+```bash
+./target/release/clawtrade
+```
+
+## Build
+
+```bash
+cargo build --release
+```
+
 
 ## Quick Start
 
