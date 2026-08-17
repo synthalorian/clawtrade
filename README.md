@@ -328,7 +328,7 @@ Apache-2.0 — See LICENSE file
 
 ## This is the wave. 🎹🦞🌆
 
-Built with neon dreams and Rust by [synthalorian](https://github.com/synthalorian).
+Built with neon dreams and Rust by [synth](https://github.com/synthalorian).
 
 ---
 
