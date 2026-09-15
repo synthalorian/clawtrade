@@ -560,7 +560,7 @@ impl LlmClient {
         let local_url =
             std::env::var("LLM_LOCAL_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string()); // Default to llama-swap
         let local_model =
-            std::env::var("LLM_LOCAL_MODEL").unwrap_or_else(|_| "synthclaw-9b-131k".to_string());
+            std::env::var("LLM_LOCAL_MODEL").unwrap_or_else(|_| "blackclaw-9b-131k".to_string());
 
         Self {
             nvidia,

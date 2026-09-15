@@ -638,7 +638,7 @@ impl AgentLoop {
             "Great value for money. Will buy again.",
             "Top notch AI-generated content. Highly recommended.",
             "Smooth transaction. The results exceeded expectations.",
-            "This is the wave. 🎹🦞",
+            "This is the wave. ⚫🦞",
         ];
         let comment = det_choice(&comments, &format!("{}-comment", seed)).unwrap_or("Great service!");
 
@@ -760,7 +760,7 @@ impl AgentLoop {
             "Great value for money. Will buy again.",
             "Top notch AI-generated content. Highly recommended.",
             "Smooth transaction. The results exceeded expectations.",
-            "This is the wave. 🎹🦞",
+            "This is the wave. ⚫🦞",
         ];
         let comment = det_choice(&comments, &format!("{}-comment", seed)).unwrap_or("Great service!");
 

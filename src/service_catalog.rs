@@ -94,18 +94,18 @@ impl ModelAssignment {
 
     fn default_model_name(&self) -> String {
         match self {
-            ModelAssignment::Qwen9B_131k => "synthclaw-9b-131k".to_string(),
-            ModelAssignment::Qwen9B_262k => "synthclaw-9b-262k".to_string(),
-            ModelAssignment::Qwen9B_524k => "synthclaw-9b-524k".to_string(),
-            ModelAssignment::Gemma12B_131k => "synthclaw-gemma-12b-131k".to_string(),
-            ModelAssignment::Gemma12B_262k => "synthclaw-gemma-12b-262k".to_string(),
-            ModelAssignment::Gemma12B_524k => "synthclaw-gemma-12b-524k".to_string(),
-            ModelAssignment::Qwen35B_131k => "synthclaw-35b-131k".to_string(),
-            ModelAssignment::Qwen35B_262k => "synthclaw-35b-262k".to_string(),
-            ModelAssignment::Qwen35B_524k => "synthclaw-35b-524k".to_string(),
-            ModelAssignment::Qwen35BKimi_131k => "synthclaw-35bkimi-131k".to_string(),
-            ModelAssignment::Qwen35BKimi_262k => "synthclaw-35bkimi-262k".to_string(),
-            ModelAssignment::Qwen35BKimi_524k => "synthclaw-35bkimi-524k".to_string(),
+            ModelAssignment::Qwen9B_131k => "blackclaw-9b-131k".to_string(),
+            ModelAssignment::Qwen9B_262k => "blackclaw-9b-262k".to_string(),
+            ModelAssignment::Qwen9B_524k => "blackclaw-9b-524k".to_string(),
+            ModelAssignment::Gemma12B_131k => "blackclaw-gemma-12b-131k".to_string(),
+            ModelAssignment::Gemma12B_262k => "blackclaw-gemma-12b-262k".to_string(),
+            ModelAssignment::Gemma12B_524k => "blackclaw-gemma-12b-524k".to_string(),
+            ModelAssignment::Qwen35B_131k => "blackclaw-35b-131k".to_string(),
+            ModelAssignment::Qwen35B_262k => "blackclaw-35b-262k".to_string(),
+            ModelAssignment::Qwen35B_524k => "blackclaw-35b-524k".to_string(),
+            ModelAssignment::Qwen35BKimi_131k => "blackclaw-35bkimi-131k".to_string(),
+            ModelAssignment::Qwen35BKimi_262k => "blackclaw-35bkimi-262k".to_string(),
+            ModelAssignment::Qwen35BKimi_524k => "blackclaw-35bkimi-524k".to_string(),
         }
     }
 
@@ -981,16 +981,16 @@ mod tests {
     #[test]
     fn test_default_model_names() {
         let qwen = ModelAssignment::Qwen9B_131k;
-        assert_eq!(qwen.default_model_name(), "synthclaw-9b-131k");
+        assert_eq!(qwen.default_model_name(), "blackclaw-9b-131k");
 
         let gemma = ModelAssignment::Gemma12B_131k;
-        assert_eq!(gemma.default_model_name(), "synthclaw-gemma-12b-131k");
+        assert_eq!(gemma.default_model_name(), "blackclaw-gemma-12b-131k");
 
         let qwen35 = ModelAssignment::Qwen35B_262k;
-        assert_eq!(qwen35.default_model_name(), "synthclaw-35b-262k");
+        assert_eq!(qwen35.default_model_name(), "blackclaw-35b-262k");
 
         let kimi = ModelAssignment::Qwen35BKimi_524k;
-        assert_eq!(kimi.default_model_name(), "synthclaw-35bkimi-524k");
+        assert_eq!(kimi.default_model_name(), "blackclaw-35bkimi-524k");
     }
 
     #[test]

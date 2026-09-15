@@ -367,4 +367,4 @@ clawtrade/
 - [ ] Service deduplication prevents marketplace spam
 - [ ] README explains the business case, tech stack, and how to run it
 
-## This is the wave. 🎹🦞🌆
+## This is the wave. ⚫🦞🌆

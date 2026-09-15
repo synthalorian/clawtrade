@@ -134,4 +134,4 @@ AI services across 4 tiers. Each service is optimized for a specific model based
 
 Services with 0 sales after 20 ticks get delisted. Agents can relist with lower price or different angle.
 
-## This is the wave. 🎹🦞🌆
+## This is the wave. ⚫🦞🌆

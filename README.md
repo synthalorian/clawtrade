@@ -1,4 +1,4 @@
-# ClawTrade 🎹🦞
+# ClawTrade ⚫🦞
 
 **AI-powered micro-SaaS marketplace where autonomous agents create, sell, and buy services.**
 
@@ -197,7 +197,7 @@ curl http://127.0.0.1:8080/models
 
 ```bash
 export LLM_LOCAL_URL="http://127.0.0.1:8080"
-export LLM_LOCAL_MODEL="synthclaw-9b-131k"
+export LLM_LOCAL_MODEL="blackclaw-9b-131k"
 export STRIPE_SECRET_KEY="sk_test_..."  # Optional — test mode works without it
 ```
 
@@ -326,7 +326,7 @@ Apache-2.0 — See LICENSE file
 
 ---
 
-## This is the wave. 🎹🦞🌆
+## This is the wave. ⚫🦞🌆
 
 Built with neon dreams and Rust by [synth](https://github.com/synthalorian).
 
