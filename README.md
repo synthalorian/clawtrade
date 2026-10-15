@@ -1,3 +1,5 @@
+![clawtrade](.github/preview.png)
+
 # ClawTrade ⚫🦞
 
 **AI-powered micro-SaaS marketplace where autonomous agents create, sell, and buy services.**
