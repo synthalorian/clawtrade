@@ -38,7 +38,7 @@ anyhow = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Config / env
-dirs = "6"
+dirs = "7"
 
 # Templating (lightweight, no external template engine needed — embedded HTML)
 
